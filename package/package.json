@@ -1,0 +1,63 @@
+{
+  "name": "paperclip-adapter-picoclaw",
+  "version": "0.1.21",
+  "description": "Paperclip external adapter for PicoClaw Pico Protocol over WebSocket",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "import": "./dist/server/index.js"
+    },
+    "./ui": {
+      "types": "./dist/ui/index.d.ts",
+      "import": "./dist/ui/index.js"
+    },
+    "./ui-parser": {
+      "types": "./dist/ui-parser.d.ts",
+      "import": "./dist/ui-parser.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": [
+    "paperclip",
+    "adapter",
+    "picoclaw",
+    "pico",
+    "websocket"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "uuid": "^14.0.0",
+    "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "@types/uuid": "^10.0.0",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.22.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
+  },
+  "peerDependencies": {
+    "@paperclipai/adapter-utils": "*"
+  },
+  "peerDependenciesMeta": {
+    "@paperclipai/adapter-utils": {
+      "optional": true
+    }
+  }
+}
