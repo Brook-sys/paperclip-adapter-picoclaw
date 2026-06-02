@@ -1,24 +1,48 @@
 import WebSocket from "ws";
 import { randomUUID } from "crypto";
 import { deserialize, serialize } from "./session.js";
-function buildCompactPrompt(ctx) {
-    const taskKey = ctx.runtime.taskKey ?? "";
-    const agentName = ctx.agent.name;
+
+function joinPromptSections(sections) {
+    return sections.filter((s) => typeof s === "string" && s.trim().length > 0).join("\n\n");
+}
+function renderPaperclipWakePrompt(wake, options) {
+    if (!wake || typeof wake !== "object") return "";
     const parts = [];
-    parts.push(`You are being called by Paperclip as agent **${agentName}**.\n`);
-    if (taskKey)
-        parts.push(`Task reference: ${taskKey}\n`);
-    parts.push(`Paperclip run ID: ${ctx.runId}\n`);
-    parts.push("Complete the following task using your available tools and workspace.\n");
-    
-    parts.push("CRITICAL RULES:\n");
-    parts.push("1. If a tool execution fails (especially with security/permission blocks like 'Command blocked' or 'outside working dir'), DO NOT attempt to retry the same tool repeatedly.\n");
-    parts.push("2. Accept the failure, stop the execution loop, and provide a clear explanation of the error directly to the user.\n");
-    parts.push("3. DIARY MODE: Before you execute any tool, you MUST output a single short sentence explaining your intent to the user (e.g. 'I will try to create the folder...', or 'Execution failed, I will try an alternative approach...'). Think out loud before calling tools.\n");
-    
-    parts.push("When finished, summarize the changes made.\n\n");
-    parts.push(ctx.renderedPrompt ?? "");
-    return parts.join("");
+    if (options?.resumedSession) {
+        parts.push("Paperclip Resume Delta:");
+    } else {
+        parts.push("Paperclip Wake Payload:");
+    }
+    if (wake.wakeReason) parts.push(`- Reason: ${wake.wakeReason}`);
+    if (wake.wakeCommentId) parts.push(`- Comment: ${wake.wakeCommentId}`);
+    return parts.length > 1 ? parts.join("\n") : "";
+}
+
+function buildRichPrompt(ctx) {
+    const isResume = Boolean(deserialize(ctx.runtime.sessionParams));
+    const wakePrompt = renderPaperclipWakePrompt(ctx.context.paperclipWake, { resumedSession: isResume });
+    const taskContextNote = String(ctx.context.paperclipTaskMarkdown ?? "").trim();
+    const sessionHandoffNote = String(ctx.context.paperclipSessionHandoffMarkdown ?? "").trim();
+    const shouldUseResumeDeltaPrompt = isResume && wakePrompt.length > 0;
+    const userInstruction = shouldUseResumeDeltaPrompt ? "" : String(ctx.renderedPrompt ?? "");
+    let fallbackDirective = "";
+    if (!wakePrompt && !userInstruction.trim()) {
+        fallbackDirective = "Paperclip triggered an execution run. Please review your active issue or recent comments and take the next necessary action. If no action is needed, report that you are done.";
+    }
+    const constraints = [
+        "IMPORTANT PICO-CLAW CONSTRAINTS FOR THIS RUN:",
+        "1. If a tool execution fails, especially with security or permission blocks like 'Command blocked' or 'outside working dir', do not retry the same tool repeatedly.",
+        "2. Accept the failure, stop the execution loop, and provide a clear explanation of the error directly to the user.",
+        "3. Before you execute any tool, output a single short sentence explaining your intent to the user."
+    ].join("\n");
+    return joinPromptSections([
+        fallbackDirective,
+        wakePrompt,
+        sessionHandoffNote,
+        taskContextNote,
+        userInstruction,
+        constraints
+    ]);
 }
 function resolveConfig(ctx) {
     const cfg = ctx.config;
@@ -26,6 +50,7 @@ function resolveConfig(ctx) {
         gatewayUrl: String(cfg.gatewayUrl ?? "ws://127.0.0.1:18790/pico"),
         token: String(cfg.token ?? ""),
         timeoutMs: Number(cfg.timeoutMs ?? 300_000),
+        completionGraceMs: Number(cfg.completionGraceMs ?? 5000),
         sessionStrategy: String(cfg.sessionStrategy ?? "issue"),
         promptMode: String(cfg.promptMode ?? "compact"),
     };
@@ -51,7 +76,6 @@ const PICOCLAW_PING = "ping";
 const PICOCLAW_PONG = "pong";
 function truncateForLog(value, maxLength = 160) {
     const text = String(value ?? "");
-    // Redact obvious secrets
     const redacted = text.replace(/(Bearer\s+)[a-zA-Z0-9_\-\.\~]+/gi, "$1***REDACTED***")
                          .replace(/(["']?(?:api_key|token|secret|password|auth)["']?\s*[:=]\s*["']?)[a-zA-Z0-9_\-\.\~]+/gi, "$1***REDACTED***");
     return redacted.length > maxLength ? `${redacted.slice(0, maxLength)}...` : redacted;
@@ -104,13 +128,27 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
     let accumulated = "";
     let done = false;
     let errorMsg = "";
-    
-    // Fallback dictionary to track tool call attempts
     let toolAttempts = {};
     let messageBuffers = {};
     let lastAgentNarrationAt = 0;
+    
+    let completionGraceTimer = null;
+    const cancelCompletionGrace = () => {
+        if (completionGraceTimer) {
+            clearTimeout(completionGraceTimer);
+            completionGraceTimer = null;
+        }
+    };
 
     await new Promise((resolve, reject) => {
+        const finalizeRun = () => {
+            if (!done) {
+                done = true;
+                ws.close(1000);
+                resolve();
+            }
+        };
+
         const flushMessageBuffer = async (messageId) => {
             const buffer = messageBuffers[messageId];
             if (!buffer || !buffer.content.trim())
@@ -143,7 +181,6 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
                 }
             }, config.timeoutMs);
         };
-
         ws.on("open", () => {
             ws.send(JSON.stringify({
                 type: "message.send",
@@ -156,18 +193,17 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
         ws.on("message", async (data) => {
             try {
                 resetIdleTimer();
+                cancelCompletionGrace();
                 const msg = JSON.parse(data.toString("utf-8"));
-
                 switch (msg.type) {
                     case "message.create": {
                         const content = String(msg.payload?.content ?? "");
                         const msgId = msg.payload?.message_id || randomUUID();
                         if (content.trim()) {
                             scheduleMessageBuffer(msgId, content, "append");
-                        } else if (msg.payload?.kind === "tool_calls") {
-                            // Empty tool_call message fallback: construct diagnostic diary
+                        }
+                        else if (msg.payload?.kind === "tool_calls") {
                             const timeSinceLastNarration = Date.now() - lastAgentNarrationAt;
-                            // Only output detailed fallback if agent didn't speak in the last 2.5 seconds
                             if (timeSinceLastNarration > 2500) {
                                 const calls = extractToolCalls(msg.payload);
                                 for (const call of calls) {
@@ -186,8 +222,6 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
                         if (content.trim() && msgId) {
                             scheduleMessageBuffer(msgId, content, "replace");
                         }
-                        // We intentionally do not duplicate the diary for message.update 
-                        // to avoid spamming the UI for each delta of tool_calls stream.
                         break;
                     }
                     case "message.delete": {
@@ -200,9 +234,11 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
                     }
                     case "typing.stop": {
                         await onLogStdout(JSON.stringify({ type: "picoclaw.typing", state: "stop" }) + "\n");
-                        // We intentionally DO NOT close the socket here anymore.
-                        // We let the idleTimer (or a server close) handle the completion
-                        // because PicoClaw may send typing.stop *before* finishing its message updates.
+                        if (!completionGraceTimer) {
+                            completionGraceTimer = setTimeout(() => {
+                                finalizeRun();
+                            }, config.completionGraceMs);
+                        }
                         break;
                     }
                     case "error": {
@@ -244,8 +280,8 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
                 for (const msgId of Object.keys(messageBuffers)) {
                     clearTimeout(messageBuffers[msgId].timer);
                     if (messageBuffers[msgId].content.trim()) {
-                        accumulated = messageBuffers[msgId].mode === "replace" 
-                            ? messageBuffers[msgId].content 
+                        accumulated = messageBuffers[msgId].mode === "replace"
+                            ? messageBuffers[msgId].content
                             : accumulated + messageBuffers[msgId].content;
                         onLogStdout(JSON.stringify({ type: "picoclaw.message", content: messageBuffers[msgId].content }) + "\n").catch(() => {});
                     }
@@ -274,21 +310,12 @@ export async function execute(ctx) {
         };
     }
     const prompt = config.promptMode === "compact"
-        ? buildCompactPrompt(ctx)
+        ? buildRichPrompt(ctx)
         : (ctx.renderedPrompt ?? "");
-    if (!prompt.trim()) {
-        await ctx.onLog("stdout", "Skipped execution: prompt content is empty.\n");
-        return {
-            exitCode: 0,
-            signal: null,
-            timedOut: false,
-            summary: "Skipped: empty prompt.",
-            sessionParams: serialize({ sessionId }),
-            sessionDisplayId: sessionId.slice(0, 36),
-            billingType: "subscription",
-        };
+    await ctx.onLog("stderr", `[DEBUG] Paperclip final prompt length: ${prompt.length} chars.\n`);
+    if (ctx.renderedPrompt) {
+        await ctx.onLog("stderr", `[DEBUG] renderedPrompt preview: ${String(ctx.renderedPrompt).slice(0, 200).replace(/\n/g, ' ')}...\n`);
     }
-    const start = Date.now();
     let timedOut = false;
     let accumulated = "";
     try {

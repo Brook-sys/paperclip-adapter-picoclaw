@@ -26,6 +26,12 @@ export const configSchema = {
             title: "Timeout (ms)",
             default: 300000
         },
+        completionGraceMs: {
+            type: "number",
+            title: "Completion Grace Timer (ms)",
+            description: "How long to wait after the agent stops typing before closing the connection",
+            default: 5000
+        },
         promptMode: {
             type: "string",
             title: "Prompt Mode",

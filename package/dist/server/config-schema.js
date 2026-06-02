@@ -36,6 +36,13 @@ export function getConfigSchema() {
                 default: 300000,
             },
             {
+                key: "completionGraceMs",
+                label: "Completion Grace Timer (ms)",
+                type: "number",
+                default: 5000,
+                hint: "How long to wait after the agent stops typing before closing the connection. Increase if messages are being cut off.",
+            },
+            {
                 key: "promptMode",
                 label: "Prompt Mode",
                 type: "select",
