@@ -1,4 +1,4 @@
-export function parseStdoutLine(line, ts) {
+exports.parseStdoutLine = function parseStdoutLine(line, ts) {
     const trimmed = line.trim();
     if (!trimmed)
         return [];
@@ -33,4 +33,4 @@ export function parseStdoutLine(line, ts) {
     catch {
     }
     return [{ kind: "stdout", text: trimmed, ts }];
-}
+};
