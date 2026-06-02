@@ -82,16 +82,6 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
             try {
                 resetIdleTimer();
                 const msg = JSON.parse(data.toString("utf-8"));
-                
-                // Debug log to trace what PicoClaw is sending us
-                if (msg.type !== "ping" && msg.type !== "pong") {
-                    const debugPayload = msg.payload ? {
-                        kind: msg.payload.kind,
-                        placeholder: msg.payload.placeholder,
-                        id: msg.payload.message_id
-                    } : null;
-                    await onLogStderr(`[DEBUG] type=${msg.type} session=${msg.session_id} has_content=${Boolean(msg.payload?.content)} payload=${JSON.stringify(debugPayload)}\n`);
-                }
 
                 switch (msg.type) {
                     case "message.create": {
