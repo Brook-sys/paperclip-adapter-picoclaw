@@ -119,6 +119,10 @@ out
 # TernJS port file
 .tern-port
 
+# SyncThing
+.stfolder/
+.stfolder
+
 # Mac OS files
 .DS_Store
 
