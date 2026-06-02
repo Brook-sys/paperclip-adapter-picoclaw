@@ -66,7 +66,7 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
                     ws.close(1000);
                     resolve();
                 }
-            }, 3000);
+            }, config.timeoutMs);
         };
 
         ws.on("open", () => {
