@@ -1,8 +1,8 @@
-// FORCE CACHE BUST: 2026-06-02-B
-exports.parseStdoutLine = function parseStdoutLine(line, ts) {
+export function parseStdoutLine(line, ts) {
+    const timestamp = ts || new Date().toISOString();
     const trimmed = line.trim();
     if (!trimmed) return [];
-    
+
     try {
         const parsed = JSON.parse(trimmed);
         if (parsed && typeof parsed === "object" && parsed.type) {
@@ -13,8 +13,8 @@ exports.parseStdoutLine = function parseStdoutLine(line, ts) {
                             {
                                 kind: "thinking",
                                 text: "PicoClaw is thinking...",
-                                ts: ts || new Date().toISOString(),
-                            }
+                                ts: timestamp,
+                            },
                         ];
                     }
                     return [];
@@ -23,15 +23,15 @@ exports.parseStdoutLine = function parseStdoutLine(line, ts) {
                         {
                             kind: "assistant",
                             text: String(parsed.content ?? ""),
-                            ts: ts || new Date().toISOString(),
-                        }
+                            ts: timestamp,
+                        },
                     ];
                 default:
-                    return [{ kind: "system", text: "PARSER DEFAULT: Unknown type '" + parsed.type + "' in line: " + trimmed, ts: ts || new Date().toISOString() }];
+                    return [{ kind: "stdout", text: trimmed, ts: timestamp }];
             }
         }
-        return [{ kind: "system", text: "PARSER WARNING: Parsed object without .type in line: " + trimmed, ts: ts || new Date().toISOString() }];
-    } catch (e) {
-        return [{ kind: "stderr", text: "PARSER CATCH ERROR (" + String(e) + "): " + trimmed, ts: ts || new Date().toISOString() }];
+        return [{ kind: "stdout", text: trimmed, ts: timestamp }];
+    } catch {
+        return [{ kind: "stdout", text: trimmed, ts: timestamp }];
     }
-};
+}

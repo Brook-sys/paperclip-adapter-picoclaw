@@ -26,6 +26,9 @@
   "files": [
     "dist"
   ],
+  "paperclip": {
+    "adapterUiParser": "1.0.0"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
