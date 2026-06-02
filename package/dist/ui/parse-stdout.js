@@ -1,4 +1,4 @@
-export function parseStdoutLine(line) {
+export function parseStdoutLine(line, ts) {
     const trimmed = line.trim();
     if (!trimmed)
         return [];
@@ -12,6 +12,7 @@ export function parseStdoutLine(line) {
                             {
                                 kind: "thinking",
                                 text: "PicoClaw is thinking...",
+                                ts,
                             },
                         ];
                     }
@@ -21,14 +22,15 @@ export function parseStdoutLine(line) {
                         {
                             kind: "assistant",
                             text: String(parsed.content ?? ""),
+                            ts,
                         },
                     ];
                 default:
-                    return [{ kind: "stdout", text: trimmed }];
+                    return [{ kind: "stdout", text: trimmed, ts }];
             }
         }
     }
     catch {
     }
-    return [{ kind: "stdout", text: trimmed }];
+    return [{ kind: "stdout", text: trimmed, ts }];
 }

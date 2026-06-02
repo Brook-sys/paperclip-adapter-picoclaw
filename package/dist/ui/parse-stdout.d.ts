@@ -1,6 +1,7 @@
 export interface TranscriptEntry {
-    type: "text" | "status";
-    content: string;
-    timestamp?: number;
+    kind: "stdout" | "stderr" | "system" | "assistant" | "thinking" | "tool_call" | "tool_result" | "result";
+    text?: string;
+    ts?: string;
+    [key: string]: any;
 }
-export declare function parseStdoutLine(line: string): TranscriptEntry[];
+export declare function parseStdoutLine(line: string, ts?: string): TranscriptEntry[];
