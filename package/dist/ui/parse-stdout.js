@@ -26,11 +26,12 @@ export function parseStdoutLine(line, ts) {
                         },
                     ];
                 default:
-                    return [{ kind: "stdout", text: trimmed, ts }];
+                    return [{ kind: "system", text: "PARSER DEFAULT: Unknown type '" + parsed.type + "' in line: " + trimmed, ts }];
             }
         }
+        return [{ kind: "system", text: "PARSER WARNING: Parsed object without .type in line: " + trimmed, ts }];
     }
-    catch {
+    catch (e) {
+        return [{ kind: "stderr", text: "PARSER CATCH ERROR (" + String(e) + "): " + trimmed, ts }];
     }
-    return [{ kind: "stdout", text: trimmed, ts }];
 }
