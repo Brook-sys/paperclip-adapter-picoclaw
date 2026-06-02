@@ -55,7 +55,20 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
     let accumulated = "";
     let done = false;
     let errorMsg = "";
+
     await new Promise((resolve, reject) => {
+        let idleTimer;
+        const resetIdleTimer = () => {
+            clearTimeout(idleTimer);
+            idleTimer = setTimeout(() => {
+                if (!done) {
+                    done = true;
+                    ws.close(1000);
+                    resolve();
+                }
+            }, 3000);
+        };
+
         ws.on("open", () => {
             ws.send(JSON.stringify({
                 type: "message.send",
@@ -63,9 +76,11 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
                 session_id: sessionId,
                 payload: { content: prompt },
             }));
+            resetIdleTimer();
         });
         ws.on("message", async (data) => {
             try {
+                resetIdleTimer();
                 const msg = JSON.parse(data.toString("utf-8"));
                 switch (msg.type) {
                     case "message.create": {
@@ -90,11 +105,9 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
                     }
                     case "typing.stop": {
                         await onLogStdout(JSON.stringify({ type: "picoclaw.typing", state: "stop" }) + "\n");
-                        if (!done) {
-                            done = true;
-                            ws.close(1000);
-                            resolve();
-                        }
+                        // We intentionally DO NOT close the socket here anymore.
+                        // We let the idleTimer (or a server close) handle the completion
+                        // because PicoClaw may send typing.stop *before* finishing its message updates.
                         break;
                     }
                     case "error": {
