@@ -7,28 +7,28 @@ export function parseStdoutLine(line) {
         if (parsed && typeof parsed === "object" && parsed.type) {
             switch (parsed.type) {
                 case "picoclaw.typing":
-                    return [
-                        {
-                            type: "status",
-                            content: parsed.state === "start"
-                                ? "[PicoClaw] thinking..."
-                                : "[PicoClaw] done",
-                        },
-                    ];
+                    if (parsed.state === "start") {
+                        return [
+                            {
+                                kind: "thinking",
+                                text: "PicoClaw is thinking...",
+                            },
+                        ];
+                    }
+                    return [];
                 case "picoclaw.message":
                     return [
                         {
-                            type: "text",
-                            content: String(parsed.content ?? ""),
+                            kind: "assistant",
+                            text: String(parsed.content ?? ""),
                         },
                     ];
                 default:
-                    return [{ type: "text", content: trimmed }];
+                    return [{ kind: "stdout", text: trimmed }];
             }
         }
     }
     catch {
-        // not JSON, treat as raw text
     }
-    return [{ type: "text", content: trimmed }];
+    return [{ kind: "stdout", text: trimmed }];
 }
