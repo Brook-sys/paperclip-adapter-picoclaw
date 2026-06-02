@@ -1,7 +1,8 @@
+// FORCE CACHE BUST: 2026-06-02-B
 exports.parseStdoutLine = function parseStdoutLine(line, ts) {
     const trimmed = line.trim();
-    if (!trimmed)
-        return [];
+    if (!trimmed) return [];
+    
     try {
         const parsed = JSON.parse(trimmed);
         if (parsed && typeof parsed === "object" && parsed.type) {
@@ -12,8 +13,8 @@ exports.parseStdoutLine = function parseStdoutLine(line, ts) {
                             {
                                 kind: "thinking",
                                 text: "PicoClaw is thinking...",
-                                ts,
-                            },
+                                ts: ts || new Date().toISOString(),
+                            }
                         ];
                     }
                     return [];
@@ -22,16 +23,15 @@ exports.parseStdoutLine = function parseStdoutLine(line, ts) {
                         {
                             kind: "assistant",
                             text: String(parsed.content ?? ""),
-                            ts,
-                        },
+                            ts: ts || new Date().toISOString(),
+                        }
                     ];
                 default:
-                    return [{ kind: "system", text: "PARSER DEFAULT: Unknown type '" + parsed.type + "' in line: " + trimmed, ts }];
+                    return [{ kind: "system", text: "PARSER DEFAULT: Unknown type '" + parsed.type + "' in line: " + trimmed, ts: ts || new Date().toISOString() }];
             }
         }
-        return [{ kind: "system", text: "PARSER WARNING: Parsed object without .type in line: " + trimmed, ts }];
-    }
-    catch (e) {
-        return [{ kind: "stderr", text: "PARSER CATCH ERROR (" + String(e) + "): " + trimmed, ts }];
+        return [{ kind: "system", text: "PARSER WARNING: Parsed object without .type in line: " + trimmed, ts: ts || new Date().toISOString() }];
+    } catch (e) {
+        return [{ kind: "stderr", text: "PARSER CATCH ERROR (" + String(e) + "): " + trimmed, ts: ts || new Date().toISOString() }];
     }
 };
