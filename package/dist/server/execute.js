@@ -51,7 +51,10 @@ const PICOCLAW_PING = "ping";
 const PICOCLAW_PONG = "pong";
 function truncateForLog(value, maxLength = 160) {
     const text = String(value ?? "");
-    return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+    // Redact obvious secrets
+    const redacted = text.replace(/(Bearer\s+)[a-zA-Z0-9_\-\.\~]+/gi, "$1***REDACTED***")
+                         .replace(/(["']?(?:api_key|token|secret|password|auth)["']?\s*[:=]\s*["']?)[a-zA-Z0-9_\-\.\~]+/gi, "$1***REDACTED***");
+    return redacted.length > maxLength ? `${redacted.slice(0, maxLength)}...` : redacted;
 }
 function toolCallDisplay(toolCall) {
     if (!toolCall || typeof toolCall !== "object")
@@ -104,8 +107,31 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
     
     // Fallback dictionary to track tool call attempts
     let toolAttempts = {};
+    let messageBuffers = {};
+    let lastAgentNarrationAt = 0;
 
     await new Promise((resolve, reject) => {
+        const flushMessageBuffer = async (messageId) => {
+            const buffer = messageBuffers[messageId];
+            if (!buffer || !buffer.content.trim())
+                return;
+            delete messageBuffers[messageId];
+            accumulated = buffer.mode === "replace" ? buffer.content : accumulated + buffer.content;
+            lastAgentNarrationAt = Date.now();
+            await onLogStdout(JSON.stringify({ type: "picoclaw.message", content: buffer.content }) + "\n");
+        };
+        const scheduleMessageBuffer = (messageId, content, mode) => {
+            if (!messageBuffers[messageId])
+                messageBuffers[messageId] = { content: "", timer: null, mode };
+            messageBuffers[messageId].content = content;
+            messageBuffers[messageId].mode = mode;
+            clearTimeout(messageBuffers[messageId].timer);
+            messageBuffers[messageId].timer = setTimeout(() => {
+                flushMessageBuffer(messageId).catch(async (err) => {
+                    await onLogStderr(`picoclaw: could not flush message buffer: ${err.message}\n`);
+                });
+            }, 700);
+        };
         let idleTimer;
         const resetIdleTimer = () => {
             clearTimeout(idleTimer);
@@ -135,26 +161,30 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
                 switch (msg.type) {
                     case "message.create": {
                         const content = String(msg.payload?.content ?? "");
+                        const msgId = msg.payload?.message_id || randomUUID();
                         if (content.trim()) {
-                            accumulated += content;
-                            await onLogStdout(JSON.stringify({ type: "picoclaw.message", content }) + "\n");
+                            scheduleMessageBuffer(msgId, content, "append");
                         } else if (msg.payload?.kind === "tool_calls") {
                             // Empty tool_call message fallback: construct diagnostic diary
-                            const calls = extractToolCalls(msg.payload);
-                            for (const call of calls) {
-                                const key = toolCallKey(call);
-                                toolAttempts[key] = (toolAttempts[key] || 0) + 1;
-                                const diaryMsg = buildToolCallDiary(call, toolAttempts[key]);
-                                await onLogStdout(JSON.stringify({ type: "picoclaw.message", content: diaryMsg }) + "\n");
+                            const timeSinceLastNarration = Date.now() - lastAgentNarrationAt;
+                            // Only output detailed fallback if agent didn't speak in the last 2.5 seconds
+                            if (timeSinceLastNarration > 2500) {
+                                const calls = extractToolCalls(msg.payload);
+                                for (const call of calls) {
+                                    const key = toolCallKey(call);
+                                    toolAttempts[key] = (toolAttempts[key] || 0) + 1;
+                                    const diaryMsg = buildToolCallDiary(call, toolAttempts[key]);
+                                    await onLogStdout(JSON.stringify({ type: "picoclaw.message", content: diaryMsg }) + "\n");
+                                }
                             }
                         }
                         break;
                     }
                     case "message.update": {
                         const content = String(msg.payload?.content ?? "");
-                        if (content.trim()) {
-                            accumulated = content;
-                            await onLogStdout(JSON.stringify({ type: "picoclaw.message", content }) + "\n");
+                        const msgId = msg.payload?.message_id;
+                        if (content.trim() && msgId) {
+                            scheduleMessageBuffer(msgId, content, "replace");
                         }
                         // We intentionally do not duplicate the diary for message.update 
                         // to avoid spamming the UI for each delta of tool_calls stream.
@@ -211,6 +241,15 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
         ws.on("close", () => {
             if (!done) {
                 done = true;
+                for (const msgId of Object.keys(messageBuffers)) {
+                    clearTimeout(messageBuffers[msgId].timer);
+                    if (messageBuffers[msgId].content.trim()) {
+                        accumulated = messageBuffers[msgId].mode === "replace" 
+                            ? messageBuffers[msgId].content 
+                            : accumulated + messageBuffers[msgId].content;
+                        onLogStdout(JSON.stringify({ type: "picoclaw.message", content: messageBuffers[msgId].content }) + "\n").catch(() => {});
+                    }
+                }
                 if (errorMsg) {
                     reject(new Error(errorMsg));
                 }
