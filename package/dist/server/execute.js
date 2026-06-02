@@ -10,6 +10,11 @@ function buildCompactPrompt(ctx) {
         parts.push(`Task reference: ${taskKey}\n`);
     parts.push(`Paperclip run ID: ${ctx.runId}\n`);
     parts.push("Complete the following task using your available tools and workspace.\n");
+    
+    parts.push("CRITICAL RULES:\n");
+    parts.push("1. If a tool execution fails (especially with security/permission blocks like 'Command blocked' or 'outside working dir'), DO NOT attempt to retry the same tool repeatedly.\n");
+    parts.push("2. Accept the failure, stop the execution loop, and provide a clear explanation of the error directly to the user.\n");
+    
     parts.push("When finished, summarize the changes made.\n\n");
     parts.push(ctx.renderedPrompt ?? "");
     return parts.join("");
