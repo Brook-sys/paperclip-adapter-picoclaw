@@ -71,20 +71,25 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
                     case "message.create": {
                         const content = String(msg.payload?.content ?? "");
                         accumulated += content;
-                        await onLogStdout(content);
+                        await onLogStdout(JSON.stringify({ type: "picoclaw.message", content }) + "\n");
                         break;
                     }
                     case "message.update": {
                         const content = String(msg.payload?.content ?? "");
                         accumulated = content;
-                        await onLogStdout(content);
+                        await onLogStdout(JSON.stringify({ type: "picoclaw.message", content }) + "\n");
                         break;
                     }
                     case "message.delete": {
                         accumulated = "";
                         break;
                     }
+                    case "typing.start": {
+                        await onLogStdout(JSON.stringify({ type: "picoclaw.typing", state: "start" }) + "\n");
+                        break;
+                    }
                     case "typing.stop": {
+                        await onLogStdout(JSON.stringify({ type: "picoclaw.typing", state: "stop" }) + "\n");
                         if (!done) {
                             done = true;
                             ws.close(1000);
