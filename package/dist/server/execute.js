@@ -14,6 +14,7 @@ function buildCompactPrompt(ctx) {
     parts.push("CRITICAL RULES:\n");
     parts.push("1. If a tool execution fails (especially with security/permission blocks like 'Command blocked' or 'outside working dir'), DO NOT attempt to retry the same tool repeatedly.\n");
     parts.push("2. Accept the failure, stop the execution loop, and provide a clear explanation of the error directly to the user.\n");
+    parts.push("3. DIARY MODE: Before you execute any tool, you MUST output a single short sentence explaining your intent to the user (e.g. 'I will try to create the folder...', or 'Execution failed, I will try an alternative approach...'). Think out loud before calling tools.\n");
     
     parts.push("When finished, summarize the changes made.\n\n");
     parts.push(ctx.renderedPrompt ?? "");
@@ -48,6 +49,46 @@ function resolveSession(ctx, config) {
 }
 const PICOCLAW_PING = "ping";
 const PICOCLAW_PONG = "pong";
+function truncateForLog(value, maxLength = 160) {
+    const text = String(value ?? "");
+    return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+function toolCallDisplay(toolCall) {
+    if (!toolCall || typeof toolCall !== "object")
+        return "unknown tool";
+    const name = String(toolCall.name ?? toolCall.function?.name ?? "unknown");
+    const rawArgs = toolCall.arguments ?? toolCall.function?.arguments ?? toolCall.args ?? null;
+    if (rawArgs == null)
+        return name;
+    let argsText;
+    if (typeof rawArgs === "string") {
+        argsText = rawArgs;
+    }
+    else {
+        try {
+            argsText = JSON.stringify(rawArgs);
+        }
+        catch {
+            argsText = String(rawArgs);
+        }
+    }
+    return `${name}(${truncateForLog(argsText)})`;
+}
+function toolCallKey(toolCall) {
+    if (!toolCall || typeof toolCall !== "object")
+        return "unknown";
+    const name = String(toolCall.name ?? toolCall.function?.name ?? "unknown");
+    const rawArgs = toolCall.arguments ?? toolCall.function?.arguments ?? toolCall.args ?? "";
+    return `${name}:${typeof rawArgs === "string" ? rawArgs : JSON.stringify(rawArgs)}`;
+}
+function extractToolCalls(payload) {
+    const calls = payload?.tool_calls ?? payload?.toolCalls ?? [];
+    return Array.isArray(calls) ? calls : [];
+}
+function buildToolCallDiary(toolCall, attempt) {
+    const action = toolCallDisplay(toolCall);
+    return `[PicoClaw] Tentativa ${attempt}: executando ferramenta ${action}.`;
+}
 function buildSessionWebSocketUrl(gatewayUrl, sessionId) {
     const wsUrl = gatewayUrl.startsWith("ws") ? gatewayUrl : `ws://${gatewayUrl}`;
     const parsed = new URL(wsUrl);
@@ -60,6 +101,9 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
     let accumulated = "";
     let done = false;
     let errorMsg = "";
+    
+    // Fallback dictionary to track tool call attempts
+    let toolAttempts = {};
 
     await new Promise((resolve, reject) => {
         let idleTimer;
@@ -94,6 +138,15 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
                         if (content.trim()) {
                             accumulated += content;
                             await onLogStdout(JSON.stringify({ type: "picoclaw.message", content }) + "\n");
+                        } else if (msg.payload?.kind === "tool_calls") {
+                            // Empty tool_call message fallback: construct diagnostic diary
+                            const calls = extractToolCalls(msg.payload);
+                            for (const call of calls) {
+                                const key = toolCallKey(call);
+                                toolAttempts[key] = (toolAttempts[key] || 0) + 1;
+                                const diaryMsg = buildToolCallDiary(call, toolAttempts[key]);
+                                await onLogStdout(JSON.stringify({ type: "picoclaw.message", content: diaryMsg }) + "\n");
+                            }
                         }
                         break;
                     }
@@ -103,6 +156,8 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
                             accumulated = content;
                             await onLogStdout(JSON.stringify({ type: "picoclaw.message", content }) + "\n");
                         }
+                        // We intentionally do not duplicate the diary for message.update 
+                        // to avoid spamming the UI for each delta of tool_calls stream.
                         break;
                     }
                     case "message.delete": {
