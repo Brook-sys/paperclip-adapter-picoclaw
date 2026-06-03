@@ -36,7 +36,7 @@ function buildRichPrompt(ctx, skillPrompt) {
         "IMPORTANT PICO-CLAW CONSTRAINTS FOR THIS RUN:",
         "1. If a tool execution fails, especially with security or permission blocks like 'Command blocked' or 'outside working dir', do not retry the same tool repeatedly.",
         "2. Accept the failure, stop the execution loop, and provide a clear explanation of the error directly to the user.",
-        "3. Before you execute any tool, output a single short sentence explaining your intent to the user."
+        "3. CRITICAL: You MUST always output a brief sentence explaining your intent to the user BEFORE calling any tool. Do not silently call tools."
     ].join("\n");
     return joinPromptSections([
         fallbackDirective,
@@ -293,7 +293,7 @@ export async function execute(ctx) {
                         if (content.trim()) {
                             scheduleMessageBuffer(msgId, content, "append");
                         }
-                        else if (msg.payload?.kind === "tool_calls") {
+                        if (msg.payload?.kind === "tool_calls") {
                             const timeSinceLastNarration = Date.now() - lastAgentNarrationAt;
                             if (timeSinceLastNarration > 2500) {
                                 const calls = extractToolCalls(msg.payload);
