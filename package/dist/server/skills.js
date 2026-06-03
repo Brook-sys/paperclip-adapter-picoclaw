@@ -25,21 +25,26 @@ export async function readSelectedSkillPrompt(config) {
     const desiredSkills = resolvePaperclipDesiredSkillNames(config, availableEntries);
     const desired = new Set(desiredSkills);
     const sections = [];
+    const selectedNames = [];
     for (const entry of availableEntries) {
         if (!desired.has(entry.key) && !entry.required)
             continue;
         const markdown = await readPaperclipSkillMarkdown(__moduleDir, entry.key);
         if (!markdown || !markdown.trim())
             continue;
+        selectedNames.push(entry.runtimeName || entry.key);
         sections.push(`Skill: ${entry.runtimeName || entry.key}\n\n${markdown.trim()}`);
     }
     if (sections.length === 0)
-        return "";
-    return [
-        "Paperclip Skills enabled for this run:",
-        "Use the following skill instructions when relevant.",
-        sections.join("\n\n---\n\n"),
-    ].join("\n\n");
+        return { text: "", names: [] };
+    return {
+        text: [
+            "Paperclip Skills enabled for this run:",
+            "Use the following skill instructions when relevant.",
+            sections.join("\n\n---\n\n"),
+        ].join("\n\n"),
+        names: selectedNames
+    };
 }
 async function buildPicoClawSkillSnapshot(config, availableEntries) {
     const entries = availableEntries ?? await readPaperclipRuntimeSkillEntries(config, __moduleDir);

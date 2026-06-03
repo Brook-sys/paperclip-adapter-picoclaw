@@ -118,7 +118,8 @@ function buildToolCallDiary(toolCall, attempt) {
 }
 export async function execute(ctx) {
     const config = resolveConfig(ctx);
-    const skillPrompt = await readSelectedSkillPrompt(ctx.config);
+    const skillData = await readSelectedSkillPrompt(ctx.config);
+    const skillPrompt = skillData.text;
     const prompt = config.promptMode === "full"
         ? joinPromptSections([skillPrompt, ctx.renderedPrompt])
         : buildRichPrompt(ctx, skillPrompt);
@@ -129,6 +130,13 @@ export async function execute(ctx) {
     const onLogStderr = async (chunk) => {
         await ctx.onLog("stderr", chunk);
     };
+    
+    // Teste e validação visível:
+    if (skillData.names.length > 0) {
+        await onLogStdout(`[picoclaw-skills] Injected skills into prompt: ${skillData.names.join(", ")}\n`);
+    } else {
+        await onLogStdout(`[picoclaw-skills] No skills injected.\n`);
+    }
     if (typeof ctx.onRuntimeParams === "function") {
         await ctx.onRuntimeParams({
             sessionId,
