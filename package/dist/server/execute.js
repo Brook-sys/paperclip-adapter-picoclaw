@@ -46,12 +46,19 @@ function buildRichPrompt(ctx, config, skillPrompt, instructionsText) {
     let environmentInjection = "";
     if (ctx.runtime?.localAgentJwt && ctx.runtime?.apiUrl) {
         environmentInjection = [
-            "RUNTIME ENVIRONMENT VARIABLES (VIRTUAL):",
-            "You are executing remotely, so traditional ENV variables may not be set in your shell.",
-            "If you need to use curl or tools to interact with Paperclip, manually export these first or use them directly:",
+            "RUNTIME ENVIRONMENT VARIABLES & PAPERCLIP API PLAYBOOK:",
+            "You are executing remotely. Traditional ENV variables may not be set in your shell.",
+            "To interact with Paperclip, use these endpoints directly via curl. DO NOT guess or discover endpoints.",
             `export PAPERCLIP_API_URL="${ctx.runtime.apiUrl}"`,
             `export PAPERCLIP_API_KEY="${ctx.runtime.localAgentJwt}"`,
-            "Do NOT search the filesystem for .env, auth.json, or workspace tokens. Use the exported variables above.",
+            "",
+            "- GET $PAPERCLIP_API_URL/api/agents/me : get your agent info.",
+            "- GET $PAPERCLIP_API_URL/api/agents/me/inbox-lite : get pending tasks.",
+            "- POST $PAPERCLIP_API_URL/api/issues/<uuid>/checkout : assign issue to yourself.",
+            "- PATCH $PAPERCLIP_API_URL/api/issues/<uuid> : update issue status (e.g. {\"status\": \"done\"}).",
+            "- POST $PAPERCLIP_API_URL/api/issues/<uuid>/comments : add a comment (e.g. {\"body\": \"text\"}).",
+            "",
+            "Do NOT search the filesystem for .env, auth.json, or workspace tokens. Use the exported variables above."
         ].join("\n");
     }
 
