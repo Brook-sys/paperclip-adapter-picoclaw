@@ -44,22 +44,22 @@ function buildRichPrompt(ctx, config, skillPrompt, instructionsText) {
         fallbackDirective = "Paperclip triggered an execution run. Please review your active issue or recent comments and take the next necessary action. If no action is needed, report that you are done.";
     }
     let environmentInjection = "";
-    if (ctx.runtime?.localAgentJwt && ctx.runtime?.apiUrl) {
+    const paperclipApiUrl = String(config.paperclipApiUrlOverride || ctx.runtime?.apiUrl || "").replace(/\/+$/, "");
+    if (ctx.runtime?.localAgentJwt && paperclipApiUrl) {
+        const token = ctx.runtime.localAgentJwt;
         environmentInjection = [
-            "RUNTIME ENVIRONMENT VARIABLES & PAPERCLIP API PLAYBOOK:",
-            "You are executing remotely. Traditional ENV variables may not be set in your shell.",
-            "To interact with Paperclip, use these endpoints directly via curl. DO NOT guess or discover endpoints.",
-            `export PAPERCLIP_API_URL="${ctx.runtime.apiUrl}"`,
-            `export PAPERCLIP_API_KEY="${ctx.runtime.localAgentJwt}"`,
+            "PAPERCLIP API PLAYBOOK:",
+            "You are executing remotely. Do NOT use local shell variables like $PAPERCLIP_API_URL or $PAPERCLIP_API_KEY because they may be unset or point to the wrong host.",
+            "Use the literal curl commands below exactly. They already include the correct API base URL and token for this run.",
             "",
-            "- GET $PAPERCLIP_API_URL/api/agents/me -H \"Accept: application/json\" : get your agent info.",
-            "- GET $PAPERCLIP_API_URL/api/agents/me/inbox-lite -H \"Accept: application/json\" : get pending tasks.",
-            "- POST $PAPERCLIP_API_URL/api/issues/<uuid>/checkout -H \"Accept: application/json\" : assign issue to yourself.",
-            "- PATCH $PAPERCLIP_API_URL/api/issues/<uuid> -H \"Accept: application/json\" -H \"Content-Type: application/json\" : update issue status (e.g. {\"status\": \"done\"}).",
-            "- POST $PAPERCLIP_API_URL/api/issues/<uuid>/comments -H \"Accept: application/json\" -H \"Content-Type: application/json\" : add a comment (e.g. {\"body\": \"text\"}).",
+            `- Agent info: curl -sS -H "Authorization: Bearer ${token}" -H "Accept: application/json" "${paperclipApiUrl}/api/agents/me"`,
+            `- Inbox: curl -sS -H "Authorization: Bearer ${token}" -H "Accept: application/json" "${paperclipApiUrl}/api/agents/me/inbox-lite"`,
+            `- Checkout issue: curl -sS -X POST -H "Authorization: Bearer ${token}" -H "Accept: application/json" "${paperclipApiUrl}/api/issues/<uuid>/checkout"`,
+            `- Update issue: curl -sS -X PATCH -H "Authorization: Bearer ${token}" -H "Accept: application/json" -H "Content-Type: application/json" "${paperclipApiUrl}/api/issues/<uuid>" -d '{"status":"done"}'`,
+            `- Add comment: curl -sS -X POST -H "Authorization: Bearer ${token}" -H "Accept: application/json" -H "Content-Type: application/json" "${paperclipApiUrl}/api/issues/<uuid>/comments" -d '{"body":"text"}'`,
             "",
             "If an API call returns HTML instead of JSON, treat it as an API access/configuration failure. Do not conclude there are no tasks based on HTML.",
-            "Do NOT search the filesystem for .env, auth.json, or workspace tokens. Use the exported variables above."
+            "Do NOT search the filesystem for .env, auth.json, workspace tokens, or fallback environment variables. Use only the literal commands above."
         ].join("\n");
     }
 
@@ -101,6 +101,7 @@ function resolveConfig(ctx) {
         promptMode: String(cfg.promptMode ?? "compact"),
         promptTemplate: String(cfg.promptTemplate ?? ""),
         gatewayConstraints: String(cfg.gatewayConstraints ?? ""),
+        paperclipApiUrlOverride: String(cfg.paperclipApiUrlOverride ?? ""),
         instructionsFilePath: String(cfg.instructionsFilePath ?? ""),
     };
 }

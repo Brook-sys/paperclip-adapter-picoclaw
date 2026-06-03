@@ -29,6 +29,12 @@ export function getConfigSchema() {
                 hint: "Optional extra instructions to append to the system prompt before execution.",
             },
             {
+                key: "paperclipApiUrlOverride",
+                label: "Paperclip API URL Override",
+                type: "text",
+                hint: "Optional base URL for the Paperclip API as seen from PicoClaw, e.g. http://100.83.108.127:3100. Leave blank to use Paperclip runtime API URL.",
+            },
+            {
                 key: "instructionsFilePath",
                 label: "Instructions File Path",
                 type: "text",
