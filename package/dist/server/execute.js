@@ -218,14 +218,12 @@ export async function execute(ctx) {
         resetIdleTimer(); // <-- Armar o timer no instante zero para prevenir hang de handshake
         let pingInterval;
         ws.on("open", async () => {
-            await onLogStdout("[picoclaw] connected, sending prompt\n");
             const payload = {
                 type: "message.send",
                 id: randomUUID(),
                 session_id: sessionId,
                 payload: { content: prompt },
             };
-            await onLogStdout(`[picoclaw] debug: sent frame: ${JSON.stringify({ ...payload, payload: { content: "[TRUNCATED PROMPT]" } })}\n`);
             ws.send(JSON.stringify(payload));
             resetIdleTimer();
             pingInterval = setInterval(() => {
@@ -243,10 +241,6 @@ export async function execute(ctx) {
                 if (msg.type === PICOCLAW_PING) {
                     ws.send(JSON.stringify({ type: PICOCLAW_PONG }));
                     return;
-                }
-                // Debug log to capture the raw event (ignoring heavy message content updates)
-                if (msg.type !== "message.update" && msg.type !== "message.create") {
-                    await onLogStdout(`[picoclaw-event] ${msg.type} ${JSON.stringify(msg.payload ?? {})}\n`);
                 }
 
                 resetIdleTimer();
@@ -289,7 +283,6 @@ export async function execute(ctx) {
                         break;
                     }
                     case "typing.stop": {
-                        await onLogStdout("[picoclaw-event] typing.stop detected; finishing after grace timer\n");
                         armCompletionGrace();
                         break;
                     }
