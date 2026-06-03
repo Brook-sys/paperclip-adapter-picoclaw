@@ -3,10 +3,11 @@ export function getConfigSchema() {
         fields: [
             {
                 key: "model",
-                label: "Target Model ID",
+                label: "Target Model ID (Coming Soon)",
                 type: "text",
                 default: "default",
-                hint: "Model ID to request on the gateway (e.g., 'gpt-4o' or 'claude-3-5-sonnet')",
+                hint: "Model selection over Pico Protocol requires a backend update on PicoClaw. Currently defaults to server config.",
+                disabled: true,
             },
             {
                 key: "gatewayUrl",
