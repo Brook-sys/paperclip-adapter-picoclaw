@@ -228,9 +228,16 @@ export async function execute(ctx) {
         });
         ws.on("message", async (data) => {
             try {
+                const msg = JSON.parse(data.toString("utf-8"));
+                if (msg.type === PICOCLAW_PONG) {
+                    return;
+                }
+                if (msg.type === PICOCLAW_PING) {
+                    ws.send(JSON.stringify({ type: PICOCLAW_PONG }));
+                    return;
+                }
                 resetIdleTimer();
                 cancelCompletionGrace();
-                const msg = JSON.parse(data.toString("utf-8"));
                 switch (msg.type) {
                     case "message.create": {
                         const content = String(msg.payload?.content ?? "");
@@ -317,6 +324,7 @@ export async function execute(ctx) {
             }
         });
         ws.on("close", async (code, reason) => {
+            clearInterval(pingInterval);
             const reasonStr = reason ? reason.toString() : "No reason provided";
             await onLogStdout(`[picoclaw] connection closed: ${code} - ${reasonStr}\n`);
             if (!done) {
@@ -340,6 +348,7 @@ export async function execute(ctx) {
             cancelCompletionGrace();
         });
         ws.on("error", async (err) => {
+            clearInterval(pingInterval);
             if (!done) {
                 done = true;
                 errorMsg = err.message;
