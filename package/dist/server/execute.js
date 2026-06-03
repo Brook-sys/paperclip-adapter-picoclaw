@@ -1,5 +1,6 @@
 import WebSocket from "ws";
 import { randomUUID } from "crypto";
+import fs from "node:fs/promises";
 import { deserialize, serialize } from "./session.js";
 import { readSelectedSkillPrompt } from "./skills.js";
 function joinPromptSections(sections) {
@@ -21,13 +22,23 @@ function renderPaperclipWakePrompt(wake, options) {
         parts.push(`- Comment: ${wake.wakeCommentId}`);
     return parts.length > 1 ? parts.join("\n") : "";
 }
-function buildRichPrompt(ctx, skillPrompt) {
+function renderPromptTemplate(template, prompt) {
+    const trimmed = String(template ?? "").trim();
+    if (!trimmed)
+        return prompt;
+    if (trimmed.includes("{{prompt}}"))
+        return trimmed.replaceAll("{{prompt}}", prompt);
+    return joinPromptSections([trimmed, prompt]);
+}
+function buildRichPrompt(ctx, config, skillPrompt, instructionsText) {
     const isResume = Boolean(deserialize(ctx.runtime.sessionParams));
     const wakePrompt = renderPaperclipWakePrompt(ctx.context.paperclipWake, { resumedSession: isResume });
     const taskContextNote = String(ctx.context.paperclipTaskMarkdown ?? "").trim();
     const sessionHandoffNote = String(ctx.context.paperclipSessionHandoffMarkdown ?? "").trim();
     const shouldUseResumeDeltaPrompt = isResume && wakePrompt.length > 0;
-    const userInstruction = shouldUseResumeDeltaPrompt ? "" : String(ctx.renderedPrompt ?? "");
+    const renderedPrompt = String(ctx.renderedPrompt ?? "");
+    const templatedPrompt = renderPromptTemplate(config.promptTemplate, renderedPrompt);
+    const userInstruction = shouldUseResumeDeltaPrompt ? "" : templatedPrompt;
     let fallbackDirective = "";
     if (!wakePrompt && !userInstruction.trim()) {
         fallbackDirective = "Paperclip triggered an execution run. Please review your active issue or recent comments and take the next necessary action. If no action is needed, report that you are done.";
@@ -40,15 +51,22 @@ function buildRichPrompt(ctx, skillPrompt) {
         "   You are strictly required to narrate your actions in natural language. NEVER call a tool silently.",
         "   Before returning any tool_call, you MUST output a human-readable sentence explaining exactly what you are trying to achieve.",
         "   Example: 'Vou chamar a API do Paperclip para ver tarefas pendentes' or 'Vou verificar a memória atrás de tarefas antigas'."
-    ].join("\n");
+    ];
+    if (config.gatewayConstraints) {
+        constraints.push("");
+        constraints.push("ADDITIONAL CUSTOM CONSTRAINTS:");
+        constraints.push(config.gatewayConstraints);
+    }
+    const constraintsSection = constraints.join("\n");
     return joinPromptSections([
         fallbackDirective,
         wakePrompt,
         sessionHandoffNote,
         taskContextNote,
+        instructionsText,
         skillPrompt,
         userInstruction,
-        constraints
+        constraintsSection
     ]);
 }
 function resolveConfig(ctx) {
@@ -56,10 +74,13 @@ function resolveConfig(ctx) {
     return {
         gatewayUrl: String(cfg.gatewayUrl ?? "ws://127.0.0.1:18790/pico"),
         token: String(cfg.token ?? ""),
-        timeoutMs: Number(cfg.timeoutMs ?? 300_000),
-        completionGraceMs: Number(cfg.completionGraceMs ?? 5000),
+        timeoutMs: Number(cfg.timeoutSec ? cfg.timeoutSec * 1000 : cfg.timeoutMs ?? 300_000),
+        completionGraceMs: Number(cfg.graceSec ? cfg.graceSec * 1000 : cfg.completionGraceMs ?? 5000),
         sessionStrategy: String(cfg.sessionStrategy ?? "issue"),
         promptMode: String(cfg.promptMode ?? "compact"),
+        promptTemplate: String(cfg.promptTemplate ?? ""),
+        gatewayConstraints: String(cfg.gatewayConstraints ?? ""),
+        instructionsFilePath: String(cfg.instructionsFilePath ?? ""),
     };
 }
 function resolveSession(ctx, config) {
@@ -151,9 +172,22 @@ export async function execute(ctx) {
     const config = resolveConfig(ctx);
     const skillData = await readSelectedSkillPrompt(ctx.config);
     const skillPrompt = skillData.text;
+    
+    let instructionsText = "";
+    if (config.instructionsFilePath) {
+        try {
+            const content = await fs.readFile(config.instructionsFilePath, "utf8");
+            if (content.trim()) {
+                instructionsText = `BASE INSTRUCTIONS:\n${content.trim()}`;
+            }
+        } catch (err) {
+            await ctx.onLog("stderr", `Failed to read instructionsFilePath: ${err.message}\n`);
+        }
+    }
+    
     const prompt = config.promptMode === "full"
-        ? joinPromptSections([skillPrompt, ctx.renderedPrompt])
-        : buildRichPrompt(ctx, skillPrompt);
+        ? joinPromptSections([instructionsText, skillPrompt, ctx.renderedPrompt])
+        : buildRichPrompt(ctx, config, skillPrompt, instructionsText);
         
     const sessionId = resolveSession(ctx, config);
     const onLogStdout = async (chunk) => {

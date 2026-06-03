@@ -17,6 +17,24 @@ export function getConfigSchema() {
                 hint: "The secure authentication token from channels.pico.token in PicoClaw config",
             },
             {
+                key: "promptTemplate",
+                label: "Prompt Template",
+                type: "text",
+                hint: "Optional template for the user prompt. Use {{prompt}} as the placeholder.",
+            },
+            {
+                key: "gatewayConstraints",
+                label: "Custom System Constraints",
+                type: "text",
+                hint: "Optional extra instructions to append to the system prompt before execution.",
+            },
+            {
+                key: "instructionsFilePath",
+                label: "Instructions File Path",
+                type: "text",
+                hint: "Absolute path to a Markdown file with base instructions to prepend to the run.",
+            },
+            {
                 key: "sessionStrategy",
                 label: "Session Strategy",
                 type: "select",
@@ -30,16 +48,16 @@ export function getConfigSchema() {
                 hint: "How to manage session memory inside PicoClaw.",
             },
             {
-                key: "timeoutMs",
-                label: "Timeout (ms)",
+                key: "timeoutSec",
+                label: "Run Timeout (sec)",
                 type: "number",
-                default: 300000,
+                default: 300,
             },
             {
-                key: "completionGraceMs",
-                label: "Completion Grace Timer (ms)",
+                key: "graceSec",
+                label: "Completion Grace (sec)",
                 type: "number",
-                default: 5000,
+                default: 5,
                 hint: "How long to wait after the agent stops typing before closing the connection. Increase if messages are being cut off.",
             },
             {
