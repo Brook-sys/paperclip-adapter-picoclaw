@@ -2,14 +2,6 @@ export function getConfigSchema() {
     return {
         fields: [
             {
-                key: "model",
-                label: "Target Model ID (Coming Soon)",
-                type: "text",
-                default: "default",
-                hint: "Model selection over Pico Protocol requires a backend update on PicoClaw. Currently defaults to server config.",
-                disabled: true,
-            },
-            {
                 key: "gatewayUrl",
                 label: "PicoClaw Gateway URL",
                 type: "text",

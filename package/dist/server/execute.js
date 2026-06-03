@@ -56,7 +56,6 @@ function resolveConfig(ctx) {
     return {
         gatewayUrl: String(cfg.gatewayUrl ?? "ws://127.0.0.1:18790/pico"),
         token: String(cfg.token ?? ""),
-        model: String(cfg.model ?? "default"),
         timeoutMs: Number(cfg.timeoutMs ?? 300_000),
         completionGraceMs: Number(cfg.completionGraceMs ?? 5000),
         sessionStrategy: String(cfg.sessionStrategy ?? "issue"),
@@ -268,10 +267,7 @@ export async function execute(ctx) {
                 type: "message.send",
                 id: randomUUID(),
                 session_id: sessionId,
-                payload: { 
-                    content: prompt,
-                    model_name: config.model && config.model !== "default" ? config.model : undefined
-                },
+                payload: { content: prompt },
             };
             ws.send(JSON.stringify(payload));
             resetIdleTimer();
