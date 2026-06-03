@@ -163,9 +163,6 @@ export async function execute(ctx) {
         await ctx.onLog("stderr", chunk);
     };
     
-    await onLogStderr(`[debug-prompt] The full injected prompt length is ${prompt.length} characters.\n`);
-    await onLogStderr(`[debug-prompt] === PROMPT DUMP START ===\n${prompt}\n=== PROMPT DUMP END ===\n`);
-    
     // Teste e validação visível:
     if (skillData.names.length > 0) {
         await onLogStdout(`[picoclaw-skills] Injected skills into prompt: ${skillData.names.join(", ")}\n`);
