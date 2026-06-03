@@ -152,8 +152,10 @@ export async function execute(ctx) {
             completionGraceTimer = null;
         }
     };
-    await new Promise((resolve, reject) => {
+    await new Promise(async (resolve, reject) => {
+        await onLogStdout(`[picoclaw] connecting to ${config.gatewayUrl}\n`);
         const ws = new WebSocket(config.gatewayUrl, {
+            handshakeTimeout: Math.min(config.timeoutMs, 30_000),
             headers: {
                 Authorization: `Bearer ${config.token}`,
             },
@@ -199,7 +201,8 @@ export async function execute(ctx) {
             }, config.timeoutMs);
         };
         resetIdleTimer(); // <-- Armar o timer no instante zero para prevenir hang de handshake
-        ws.on("open", () => {
+        ws.on("open", async () => {
+            await onLogStdout("[picoclaw] connected, sending prompt\n");
             ws.send(JSON.stringify({
                 type: "message.send",
                 id: randomUUID(),
@@ -289,7 +292,18 @@ export async function execute(ctx) {
                 }
             }
         });
-        ws.on("close", async () => {
+        ws.on("unexpected-response", async (req, res) => {
+            if (!done) {
+                done = true;
+                errorMsg = `picoclaw: unexpected response HTTP ${res.statusCode} ${res.statusMessage}`;
+                await onLogStderr(`${errorMsg}\n`);
+                ws.close(1000);
+                reject(new Error(errorMsg));
+            }
+        });
+        ws.on("close", async (code, reason) => {
+            const reasonStr = reason ? reason.toString() : "No reason provided";
+            await onLogStdout(`[picoclaw] connection closed: ${code} - ${reasonStr}\n`);
             if (!done) {
                 for (const msgId of Object.keys(messageBuffers)) {
                     clearTimeout(messageBuffers[msgId].timer);
