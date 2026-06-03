@@ -188,6 +188,21 @@ function buildToolCallDiary(toolCall, attempt) {
     }
     return `[tool] calling ${callStr}...`;
 }
+function detectFatalAgentError(content) {
+    if (!content)
+        return null;
+    const text = String(content);
+    const fatalPatterns = [
+        "Error processing message:",
+        "LLM call failed",
+        "input token count exceeds",
+        "maximum number of tokens allowed",
+        "API request failed:",
+    ];
+    if (!fatalPatterns.some((pattern) => text.includes(pattern)))
+        return null;
+    return text.trim().split("\n")[0] || "fatal agent error";
+}
 export async function execute(ctx) {
     const config = resolveConfig(ctx);
     const skillData = await readSelectedSkillPrompt(ctx.config);
@@ -349,6 +364,19 @@ export async function execute(ctx) {
                         const content = String(msg.payload?.content ?? "");
                         const msgId = msg.payload?.message_id || randomUUID();
                         const calls = extractToolCalls(msg.payload);
+                        
+                        const fatalErr = detectFatalAgentError(content);
+                        if (fatalErr) {
+                            if (!done) {
+                                done = true;
+                                errorMsg = `picoclaw fatal agent error: ${fatalErr}`;
+                                await onLogStderr(`${errorMsg}\n`);
+                                ws.close(1000);
+                                reject(new Error(errorMsg));
+                            }
+                            break;
+                        }
+                        
                         if (content.trim()) {
                             if (calls.length > 0 || msg.payload?.kind === "tool_calls") {
                                 await onLogStdout(content + "\n");
@@ -381,6 +409,19 @@ export async function execute(ctx) {
                     case "message.update": {
                         const content = String(msg.payload?.content ?? "");
                         const msgId = msg.payload?.message_id;
+                        
+                        const fatalErr = detectFatalAgentError(content);
+                        if (fatalErr) {
+                            if (!done) {
+                                done = true;
+                                errorMsg = `picoclaw fatal agent error: ${fatalErr}`;
+                                await onLogStderr(`${errorMsg}\n`);
+                                ws.close(1000);
+                                reject(new Error(errorMsg));
+                            }
+                            break;
+                        }
+                        
                         if (content.trim() && msgId) {
                             scheduleMessageBuffer(msgId, content, "replace");
                         }
