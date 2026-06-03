@@ -43,6 +43,18 @@ function buildRichPrompt(ctx, config, skillPrompt, instructionsText) {
     if (!wakePrompt && !userInstruction.trim()) {
         fallbackDirective = "Paperclip triggered an execution run. Please review your active issue or recent comments and take the next necessary action. If no action is needed, report that you are done.";
     }
+    let environmentInjection = "";
+    if (ctx.runtime?.localAgentJwt && ctx.runtime?.apiUrl) {
+        environmentInjection = [
+            "RUNTIME ENVIRONMENT VARIABLES (VIRTUAL):",
+            "You are executing remotely, so traditional ENV variables may not be set in your shell.",
+            "If you need to use curl or tools to interact with Paperclip, manually export these first or use them directly:",
+            `export PAPERCLIP_API_URL="${ctx.runtime.apiUrl}"`,
+            `export PAPERCLIP_API_KEY="${ctx.runtime.localAgentJwt}"`,
+            "Do NOT search the filesystem for .env, auth.json, or workspace tokens. Use the exported variables above.",
+        ].join("\n");
+    }
+
     const constraints = [
         "IMPORTANT PICO-CLAW CONSTRAINTS FOR THIS RUN:",
         "1. If a tool execution fails, especially with security or permission blocks like 'Command blocked' or 'outside working dir', do not retry the same tool repeatedly.",
@@ -65,6 +77,7 @@ function buildRichPrompt(ctx, config, skillPrompt, instructionsText) {
         taskContextNote,
         instructionsText,
         skillPrompt,
+        environmentInjection,
         userInstruction,
         constraintsSection
     ]);
