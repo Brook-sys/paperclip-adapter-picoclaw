@@ -1,5 +1,7 @@
 # Paperclip Adapter for PicoClaw
 
+> ⚠️ **IMPORTANT WARNING:** This project was entirely developed by AI. Bugs may be found, and use in production environments is completely discouraged. Use at your own risk.
+
 An external adapter plugin for [Paperclip](https://paperclip.ing) that enables execution of LLM agents via [PicoClaw](https://github.com/sipeed/picoclaw). 
 
 This adapter acts as a bridge: Paperclip handles orchestration (control plane, issues, skills), while PicoClaw acts as the remote execution engine, running the model, prompt, and local tools (shell, filesystem) via the Pico WebSocket Protocol.

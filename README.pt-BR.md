@@ -1,5 +1,7 @@
 # Adaptador Paperclip para PicoClaw
 
+> ⚠️ **AVISO IMPORTANTE:** Este projeto foi desenvolvido inteiramente com IA. Bugs podem ser encontrados, e o uso em ambientes de produção é completamente desencorajado. Use por sua conta e risco.
+
 Um plugin adaptador externo para o [Paperclip](https://paperclip.ing) que permite a execução de agentes LLM usando o [PicoClaw](https://github.com/sipeed/picoclaw).
 
 Este adaptador age como uma ponte: o Paperclip lida com a orquestração (painel de controle, tarefas, habilidades), enquanto o PicoClaw atua como o motor de execução remota, rodando o modelo e as ferramentas locais (terminal, arquivos) através do Protocolo WebSocket Pico.
