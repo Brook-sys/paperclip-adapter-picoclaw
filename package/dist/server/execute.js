@@ -85,34 +85,62 @@ function truncateForLog(value, maxLength = 160) {
     return redacted.length > maxLength ? `${redacted.slice(0, maxLength)}...` : redacted;
 }
 function toolCallDisplay(toolCall) {
-    const name = toolCall?.name ?? "unknown_tool";
+    const name = String(toolCall?.name ?? "tool_call").trim() || "tool_call";
     const args = toolCall?.arguments ?? {};
-    const argsStr = Object.keys(args).length > 0 ? JSON.stringify(args) : "";
+    const argsStr = typeof args === "string"
+        ? args.trim()
+        : Object.keys(args).length > 0 ? JSON.stringify(args) : "";
     return argsStr ? `${name}(${truncateForLog(argsStr)})` : `${name}()`;
 }
 function extractToolCalls(payload) {
     const calls = [];
     if (!payload || typeof payload !== "object")
         return calls;
-    if (Array.isArray(payload.tool_calls)) {
-        calls.push(...payload.tool_calls);
+    
+    const tryPush = (arr) => {
+        if (!Array.isArray(arr)) return;
+        for (const rawCall of arr) {
+            if (rawCall.function && typeof rawCall.function === "object") {
+                calls.push({
+                    id: rawCall.id || null,
+                    name: rawCall.function.name ?? rawCall.name,
+                    arguments: rawCall.function.arguments ?? rawCall.arguments
+                });
+            } else {
+                calls.push({
+                    id: rawCall.id || null,
+                    name: rawCall.name,
+                    arguments: rawCall.arguments
+                });
+            }
+        }
+    };
+
+    if (payload.tool_calls) {
+        tryPush(payload.tool_calls);
     }
+    
     if (Array.isArray(payload.choices)) {
         for (const choice of payload.choices) {
-            if (Array.isArray(choice?.message?.tool_calls)) {
-                calls.push(...choice.message.tool_calls);
+            if (choice?.delta?.tool_calls) {
+                tryPush(choice.delta.tool_calls);
+            }
+            if (choice?.message?.tool_calls) {
+                tryPush(choice.message.tool_calls);
             }
         }
     }
     return calls;
 }
 function toolCallKey(toolCall) {
-    return `${toolCall?.name ?? "unknown"}:${JSON.stringify(toolCall?.arguments ?? {})}`;
+    if (toolCall?.id) return toolCall.id;
+    const name = String(toolCall?.name ?? "unknown").trim();
+    return name;
 }
 function buildToolCallDiary(toolCall, attempt) {
     const callStr = toolCallDisplay(toolCall);
     if (attempt > 1) {
-        return `[tool] retrying ${callStr} (attempt ${attempt})...`;
+        return `[tool] ${callStr}`;
     }
     return `[tool] calling ${callStr}...`;
 }
@@ -270,11 +298,18 @@ export async function execute(ctx) {
                             if (timeSinceLastNarration > 2500) {
                                 const calls = extractToolCalls(msg.payload);
                                 for (const call of calls) {
+                                    if (!call.name && Object.keys(msg.payload).length > 0) {
+                                        await onLogStderr(`[debug] raw tool payload: ${JSON.stringify(msg.payload)}\n`);
+                                    }
                                     const key = toolCallKey(call);
                                     toolAttempts[key] = (toolAttempts[key] || 0) + 1;
                                     const diaryMsg = buildToolCallDiary(call, toolAttempts[key]);
-                                    await onLogStdout(`> ${diaryMsg}\n`);
+                                    
+                                    if (toolAttempts[key] === 1) {
+                                        await onLogStdout(`> ${diaryMsg}\n`);
+                                    }
                                 }
+                                lastAgentNarrationAt = Date.now();
                             }
                         }
                         break;
