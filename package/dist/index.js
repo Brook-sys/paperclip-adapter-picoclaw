@@ -20,4 +20,4 @@ Core fields:
 - \`timeoutMs\`: Max wait time per run.
 `;
 export { createServerAdapter } from "./server/index.js";
-export { configSchema } from "./ui/index.js";
+export { configSchema, parseStdoutLine } from "./ui/index.js";
