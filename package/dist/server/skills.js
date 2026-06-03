@@ -1,8 +1,8 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import fs from "node:fs/promises";
 import {
     readPaperclipRuntimeSkillEntries,
-    readPaperclipSkillMarkdown,
     resolvePaperclipDesiredSkillNames,
     writePaperclipSkillSyncPreference,
 } from "@paperclipai/adapter-utils/server-utils";
@@ -29,7 +29,12 @@ export async function readSelectedSkillPrompt(config) {
     for (const entry of availableEntries) {
         if (!desired.has(entry.key) && !entry.required)
             continue;
-        const markdown = await readPaperclipSkillMarkdown(__moduleDir, entry.key);
+        let markdown = null;
+        try {
+            const mdPath = path.join(entry.source, "SKILL.md");
+            markdown = await fs.readFile(mdPath, "utf8");
+        } catch {
+        }
         if (!markdown || !markdown.trim())
             continue;
         selectedNames.push(entry.runtimeName || entry.key);
