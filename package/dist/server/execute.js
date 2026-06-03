@@ -114,7 +114,7 @@ function buildToolCallDiary(toolCall, attempt) {
     }
     return `[tool] calling ${callStr}...`;
 }
-export async function picoclawExecute(ctx) {
+export async function execute(ctx) {
     const config = resolveConfig(ctx);
     const prompt = config.promptMode === "full" ? ctx.renderedPrompt : buildRichPrompt(ctx);
     const sessionId = resolveSession(ctx, config);
