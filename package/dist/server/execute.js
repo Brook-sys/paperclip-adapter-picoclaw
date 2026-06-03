@@ -174,6 +174,13 @@ export async function execute(ctx) {
                 resolve();
             }
         };
+        const armCompletionGrace = () => {
+            if (!completionGraceTimer) {
+                completionGraceTimer = setTimeout(() => {
+                    finalizeRun();
+                }, config.completionGraceMs);
+            }
+        };
         const flushMessageBuffer = async (messageId) => {
             const buffer = messageBuffers[messageId];
             if (!buffer || !buffer.content.trim())
@@ -182,6 +189,7 @@ export async function execute(ctx) {
             accumulated = buffer.mode === "replace" ? buffer.content : accumulated + buffer.content;
             lastAgentNarrationAt = Date.now();
             await onLogStdout(buffer.content + "\n");
+            armCompletionGrace();
         };
         const scheduleMessageBuffer = (messageId, content, mode) => {
             if (!messageBuffers[messageId])
@@ -276,11 +284,7 @@ export async function execute(ctx) {
                         break;
                     }
                     case "typing.stop": {
-                        if (!completionGraceTimer) {
-                            completionGraceTimer = setTimeout(() => {
-                                finalizeRun();
-                            }, config.completionGraceMs);
-                        }
+                        armCompletionGrace();
                         break;
                     }
                     case "error": {
