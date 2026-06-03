@@ -48,18 +48,23 @@ function buildRichPrompt(ctx, config, skillPrompt, instructionsText) {
     if (ctx.runtime?.localAgentJwt && paperclipApiUrl) {
         const token = ctx.runtime.localAgentJwt;
         environmentInjection = [
-            "PAPERCLIP API PLAYBOOK:",
-            "You are executing remotely. Do NOT use local shell variables like $PAPERCLIP_API_URL or $PAPERCLIP_API_KEY because they may be unset or point to the wrong host.",
-            "Use the literal curl commands below exactly. They already include the correct API base URL and token for this run.",
+            "HIGHEST PRIORITY RUNTIME OVERRIDE FOR PAPERCLIP ACCESS:",
+            "You are executing in a remote PicoClaw environment, which differs from standard Paperclip setups:",
+            "1. The `paperclip` tool/MCP is NOT available. You MUST NOT call it. (If skills tell you to use the `paperclip` tool, ignore that instruction).",
+            "2. Traditional shell environment variables are NOT set. Do not search for .env files.",
+            "3. You MUST use the `exec` tool with `curl` to interact with Paperclip API.",
             "",
-            `- Agent info: curl -sS -H "Authorization: Bearer ${token}" -H "Accept: application/json" "${paperclipApiUrl}/api/agents/me"`,
-            `- Inbox: curl -sS -H "Authorization: Bearer ${token}" -H "Accept: application/json" "${paperclipApiUrl}/api/agents/me/inbox-lite"`,
-            `- Checkout issue: curl -sS -X POST -H "Authorization: Bearer ${token}" -H "Accept: application/json" "${paperclipApiUrl}/api/issues/<uuid>/checkout"`,
-            `- Update issue: curl -sS -X PATCH -H "Authorization: Bearer ${token}" -H "Accept: application/json" -H "Content-Type: application/json" "${paperclipApiUrl}/api/issues/<uuid>" -d '{"status":"done"}'`,
-            `- Add comment: curl -sS -X POST -H "Authorization: Bearer ${token}" -H "Accept: application/json" -H "Content-Type: application/json" "${paperclipApiUrl}/api/issues/<uuid>/comments" -d '{"body":"text"}'`,
+            "To successfully follow your Skills, export these exact variables in your terminal sessions before running curls, or substitute them in your commands:",
+            `export PAPERCLIP_API_URL="${paperclipApiUrl}"`,
+            `export PAPERCLIP_API_KEY="${token}"`,
+            `export PAPERCLIP_AGENT_ID="${ctx.agent.id}"`,
+            `export PAPERCLIP_COMPANY_ID="${ctx.agent.companyId}"`,
+            `export PAPERCLIP_RUN_ID="${ctx.runId}"`,
             "",
-            "If an API call returns HTML instead of JSON, treat it as an API access/configuration failure. Do not conclude there are no tasks based on HTML.",
-            "Do NOT search the filesystem for .env, auth.json, workspace tokens, or fallback environment variables. Use only the literal commands above."
+            "Example correctly authenticated call:",
+            `curl -sS -H "Authorization: Bearer $PAPERCLIP_API_KEY" -H "X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID" -H "Accept: application/json" "$PAPERCLIP_API_URL/api/agents/me/inbox-lite"`,
+            "",
+            "If an API call returns HTML instead of JSON, treat it as an API configuration failure, not as 'no tasks'.",
         ].join("\n");
     }
 
