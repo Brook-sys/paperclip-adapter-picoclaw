@@ -2,6 +2,13 @@ export function getConfigSchema() {
     return {
         fields: [
             {
+                key: "model",
+                label: "Target Model ID",
+                type: "text",
+                default: "default",
+                hint: "Model ID to request on the gateway (e.g., 'gpt-4o' or 'claude-3-5-sonnet')",
+            },
+            {
                 key: "gatewayUrl",
                 label: "PicoClaw Gateway URL",
                 type: "text",
