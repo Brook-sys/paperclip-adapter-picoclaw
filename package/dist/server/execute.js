@@ -153,6 +153,11 @@ export async function execute(ctx) {
         }
     };
     await new Promise((resolve, reject) => {
+        const ws = new WebSocket(config.gatewayUrl, {
+            headers: {
+                Authorization: `Bearer ${config.token}`,
+            },
+        });
         const finalizeRun = () => {
             if (!done) {
                 done = true;
