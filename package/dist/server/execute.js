@@ -44,27 +44,16 @@ function buildRichPrompt(ctx, config, skillPrompt, instructionsText) {
         fallbackDirective = "Paperclip triggered an execution run. Please review your active issue or recent comments and take the next necessary action. If no action is needed, report that you are done.";
     }
     let environmentInjection = "";
-    const paperclipApiUrl = String(config.paperclipApiUrlOverride || ctx.runtime?.apiUrl || "").replace(/\/+$/, "");
-    if (ctx.runtime?.localAgentJwt && paperclipApiUrl) {
-        const token = ctx.runtime.localAgentJwt;
+    if (ctx.runId) {
         environmentInjection = [
-            "HIGHEST PRIORITY RUNTIME OVERRIDE FOR PAPERCLIP ACCESS:",
-            "You are executing in a remote PicoClaw environment, which differs from standard Paperclip setups:",
-            "1. The `paperclip` tool/MCP is NOT available. You MUST NOT call it. (If skills tell you to use the `paperclip` tool, ignore that instruction).",
-            "2. Traditional shell environment variables are NOT set. Do not search for .env files.",
-            "3. You MUST use the `exec` tool with `curl` to interact with Paperclip API.",
+            "PICO-CLAW MCP ENVIRONMENT CONTEXT:",
+            "You are executing remotely. Paperclip MCP tools are available for you to interact with the Control Plane API.",
+            "Use the `paperclip` MCP tools whenever possible instead of manual curl commands.",
             "",
-            "To successfully follow your Skills, export these exact variables in your terminal sessions before running curls, or substitute them in your commands:",
-            `export PAPERCLIP_API_URL="${paperclipApiUrl}"`,
-            `export PAPERCLIP_API_KEY="${token}"`,
-            `export PAPERCLIP_AGENT_ID="${ctx.agent.id}"`,
-            `export PAPERCLIP_COMPANY_ID="${ctx.agent.companyId}"`,
-            `export PAPERCLIP_RUN_ID="${ctx.runId}"`,
-            "",
-            "Example correctly authenticated call:",
-            `curl -sS -H "Authorization: Bearer $PAPERCLIP_API_KEY" -H "X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID" -H "Accept: application/json" "$PAPERCLIP_API_URL/api/agents/me/inbox-lite"`,
-            "",
-            "If an API call returns HTML instead of JSON, treat it as an API configuration failure, not as 'no tasks'.",
+            "If any MCP tool or script requires your agent/run identification, here are the current run constants:",
+            `PAPERCLIP_AGENT_ID: ${ctx.agent.id}`,
+            `PAPERCLIP_COMPANY_ID: ${ctx.agent.companyId}`,
+            `PAPERCLIP_RUN_ID: ${ctx.runId}`
         ].join("\n");
     }
 
