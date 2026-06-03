@@ -124,10 +124,21 @@ export async function execute(ctx) {
     const onLogStderr = async (chunk) => {
         await ctx.onLog("stderr", chunk);
     };
-    await ctx.onRuntimeParams({
-        sessionId,
-        gatewayUrl: config.gatewayUrl,
-    });
+    if (typeof ctx.onRuntimeParams === "function") {
+        await ctx.onRuntimeParams({
+            sessionId,
+            gatewayUrl: config.gatewayUrl,
+        });
+    } else if (typeof ctx.onMeta === "function") {
+        await ctx.onMeta({
+            adapterType: "picoclaw",
+            command: "picoclaw-gateway",
+            commandNotes: [
+                `Gateway: ${config.gatewayUrl}`,
+                `Session: ${sessionId}`
+            ]
+        });
+    }
     let done = false;
     let accumulated = "";
     let errorMsg = null;
