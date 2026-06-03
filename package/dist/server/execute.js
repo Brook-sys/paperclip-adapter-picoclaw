@@ -154,6 +154,7 @@ export async function execute(ctx) {
     const prompt = config.promptMode === "full"
         ? joinPromptSections([skillPrompt, ctx.renderedPrompt])
         : buildRichPrompt(ctx, skillPrompt);
+        
     const sessionId = resolveSession(ctx, config);
     const onLogStdout = async (chunk) => {
         await ctx.onLog("stdout", chunk);
@@ -161,6 +162,9 @@ export async function execute(ctx) {
     const onLogStderr = async (chunk) => {
         await ctx.onLog("stderr", chunk);
     };
+    
+    await onLogStderr(`[debug-prompt] The full injected prompt length is ${prompt.length} characters.\n`);
+    await onLogStderr(`[debug-prompt] === PROMPT DUMP START ===\n${prompt}\n=== PROMPT DUMP END ===\n`);
     
     // Teste e validação visível:
     if (skillData.names.length > 0) {
