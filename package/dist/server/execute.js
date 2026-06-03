@@ -52,12 +52,13 @@ function buildRichPrompt(ctx, config, skillPrompt, instructionsText) {
             `export PAPERCLIP_API_URL="${ctx.runtime.apiUrl}"`,
             `export PAPERCLIP_API_KEY="${ctx.runtime.localAgentJwt}"`,
             "",
-            "- GET $PAPERCLIP_API_URL/api/agents/me : get your agent info.",
-            "- GET $PAPERCLIP_API_URL/api/agents/me/inbox-lite : get pending tasks.",
-            "- POST $PAPERCLIP_API_URL/api/issues/<uuid>/checkout : assign issue to yourself.",
-            "- PATCH $PAPERCLIP_API_URL/api/issues/<uuid> : update issue status (e.g. {\"status\": \"done\"}).",
-            "- POST $PAPERCLIP_API_URL/api/issues/<uuid>/comments : add a comment (e.g. {\"body\": \"text\"}).",
+            "- GET $PAPERCLIP_API_URL/api/agents/me -H \"Accept: application/json\" : get your agent info.",
+            "- GET $PAPERCLIP_API_URL/api/agents/me/inbox-lite -H \"Accept: application/json\" : get pending tasks.",
+            "- POST $PAPERCLIP_API_URL/api/issues/<uuid>/checkout -H \"Accept: application/json\" : assign issue to yourself.",
+            "- PATCH $PAPERCLIP_API_URL/api/issues/<uuid> -H \"Accept: application/json\" -H \"Content-Type: application/json\" : update issue status (e.g. {\"status\": \"done\"}).",
+            "- POST $PAPERCLIP_API_URL/api/issues/<uuid>/comments -H \"Accept: application/json\" -H \"Content-Type: application/json\" : add a comment (e.g. {\"body\": \"text\"}).",
             "",
+            "If an API call returns HTML instead of JSON, treat it as an API access/configuration failure. Do not conclude there are no tasks based on HTML.",
             "Do NOT search the filesystem for .env, auth.json, or workspace tokens. Use the exported variables above."
         ].join("\n");
     }
@@ -281,19 +282,21 @@ export async function execute(ctx) {
                 Authorization: `Bearer ${config.token}`,
             },
         });
+        let idleTimer;
         const finalizeRun = () => {
             if (!done) {
                 done = true;
+                clearTimeout(idleTimer);
+                cancelCompletionGrace();
                 ws.close(1000);
                 resolve();
             }
         };
         const armCompletionGrace = () => {
-            if (!completionGraceTimer) {
-                completionGraceTimer = setTimeout(() => {
-                    finalizeRun();
-                }, config.completionGraceMs);
-            }
+            cancelCompletionGrace();
+            completionGraceTimer = setTimeout(() => {
+                finalizeRun();
+            }, config.completionGraceMs);
         };
         const flushMessageBuffer = async (messageId) => {
             const buffer = messageBuffers[messageId];
@@ -317,7 +320,6 @@ export async function execute(ctx) {
                 });
             }, 700);
         };
-        let idleTimer;
         const resetIdleTimer = () => {
             clearTimeout(idleTimer);
             idleTimer = setTimeout(() => {
@@ -358,9 +360,9 @@ export async function execute(ctx) {
                 }
 
                 resetIdleTimer();
-                cancelCompletionGrace();
                 switch (msg.type) {
                     case "message.create": {
+                        cancelCompletionGrace();
                         const content = String(msg.payload?.content ?? "");
                         const msgId = msg.payload?.message_id || randomUUID();
                         const calls = extractToolCalls(msg.payload);
@@ -407,6 +409,7 @@ export async function execute(ctx) {
                         break;
                     }
                     case "message.update": {
+                        cancelCompletionGrace();
                         const content = String(msg.payload?.content ?? "");
                         const msgId = msg.payload?.message_id;
                         
@@ -428,10 +431,12 @@ export async function execute(ctx) {
                         break;
                     }
                     case "message.delete": {
+                        cancelCompletionGrace();
                         accumulated = "";
                         break;
                     }
                     case "typing.start": {
+                        cancelCompletionGrace();
                         await onLogStdout("[PicoClaw is thinking...]\n");
                         break;
                     }
