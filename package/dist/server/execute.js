@@ -244,6 +244,11 @@ export async function execute(ctx) {
                     ws.send(JSON.stringify({ type: PICOCLAW_PONG }));
                     return;
                 }
+                // Debug log to capture the raw event (ignoring heavy message content updates)
+                if (msg.type !== "message.update" && msg.type !== "message.create") {
+                    await onLogStdout(`[picoclaw-event] ${msg.type} ${JSON.stringify(msg.payload ?? {})}\n`);
+                }
+
                 resetIdleTimer();
                 cancelCompletionGrace();
                 switch (msg.type) {
@@ -284,6 +289,7 @@ export async function execute(ctx) {
                         break;
                     }
                     case "typing.stop": {
+                        await onLogStdout("[picoclaw-event] typing.stop detected; finishing after grace timer\n");
                         armCompletionGrace();
                         break;
                     }
