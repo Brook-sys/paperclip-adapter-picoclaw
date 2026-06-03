@@ -144,6 +144,23 @@ function buildToolCallDiary(toolCall, attempt) {
     }
     return `[tool] calling ${callStr}...`;
 }
+function toolCallNarration(toolCall) {
+    const name = String(toolCall?.name ?? "tool_call").trim() || "tool_call";
+    const args = toolCall?.arguments ?? {};
+    if (name === "exec") {
+        const action = typeof args === "object" && args ? args.action : null;
+        const command = typeof args === "object" && args ? args.command : null;
+        if (action && command) {
+            return `Vou executar um comando no terminal: ${truncateForLog(command, 120)}`;
+        }
+        return "Vou executar uma ação no terminal.";
+    }
+    if (name.startsWith("mcp_")) {
+        return `Vou consultar a ferramenta MCP ${name}.`;
+    }
+    return `Vou chamar a ferramenta ${name}.`;
+}
+
 export async function execute(ctx) {
     const config = resolveConfig(ctx);
     const skillData = await readSelectedSkillPrompt(ctx.config);
@@ -290,26 +307,33 @@ export async function execute(ctx) {
                     case "message.create": {
                         const content = String(msg.payload?.content ?? "");
                         const msgId = msg.payload?.message_id || randomUUID();
+                        const calls = extractToolCalls(msg.payload);
                         if (content.trim()) {
-                            scheduleMessageBuffer(msgId, content, "append");
-                        }
-                        if (msg.payload?.kind === "tool_calls") {
-                            const timeSinceLastNarration = Date.now() - lastAgentNarrationAt;
-                            if (timeSinceLastNarration > 2500) {
-                                const calls = extractToolCalls(msg.payload);
-                                for (const call of calls) {
-                                    if (!call.name && Object.keys(msg.payload).length > 0) {
-                                        await onLogStderr(`[debug] raw tool payload: ${JSON.stringify(msg.payload)}\n`);
-                                    }
-                                    const key = toolCallKey(call);
-                                    toolAttempts[key] = (toolAttempts[key] || 0) + 1;
-                                    const diaryMsg = buildToolCallDiary(call, toolAttempts[key]);
-                                    
-                                    if (toolAttempts[key] === 1) {
-                                        await onLogStdout(`> ${diaryMsg}\n`);
-                                    }
-                                }
+                            if (calls.length > 0 || msg.payload?.kind === "tool_calls") {
+                                await onLogStdout(content + "\n");
+                                accumulated += content;
                                 lastAgentNarrationAt = Date.now();
+                            }
+                            else {
+                                scheduleMessageBuffer(msgId, content, "append");
+                            }
+                        }
+                        if (calls.length > 0 || msg.payload?.kind === "tool_calls") {
+                            const timeSinceLastNarration = Date.now() - lastAgentNarrationAt;
+                            for (const call of calls) {
+                                if (!call.name && Object.keys(msg.payload).length > 0) {
+                                    await onLogStderr(`[debug] raw tool payload: ${JSON.stringify(msg.payload)}\n`);
+                                }
+                                const key = toolCallKey(call);
+                                toolAttempts[key] = (toolAttempts[key] || 0) + 1;
+                                const diaryMsg = buildToolCallDiary(call, toolAttempts[key]);
+                                if (toolAttempts[key] === 1) {
+                                    if (timeSinceLastNarration > 2500) {
+                                        await onLogStdout(`${toolCallNarration(call)}\n`);
+                                        lastAgentNarrationAt = Date.now();
+                                    }
+                                    await onLogStdout(`> ${diaryMsg}\n`);
+                                }
                             }
                         }
                         break;
