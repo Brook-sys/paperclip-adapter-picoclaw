@@ -192,11 +192,13 @@ export async function execute(ctx) {
             idleTimer = setTimeout(() => {
                 if (!done) {
                     done = true;
+                    errorMsg = "picoclaw: Connection timed out or agent took too long to respond.";
                     ws.close(1000);
-                    resolve();
+                    reject(new Error(errorMsg));
                 }
             }, config.timeoutMs);
         };
+        resetIdleTimer(); // <-- Armar o timer no instante zero para prevenir hang de handshake
         ws.on("open", () => {
             ws.send(JSON.stringify({
                 type: "message.send",
