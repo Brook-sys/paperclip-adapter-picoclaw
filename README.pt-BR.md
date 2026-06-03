@@ -90,3 +90,10 @@ Dentro da Interface Web do Paperclip, crie ou edite um Agente e selecione o adap
   O LLM entrou em loop ou leu arquivos muito grandes. Limpe a memória/workspace do PicoClaw ou troque para um modelo com maior janela de contexto no servidor do PicoClaw.
 - **Erro: `npx: not found` ou servidor MCP não inicia**  
   Instale Node.js e npm/npx no ambiente do PicoClaw. No Alpine: `apk add --no-cache nodejs npm`.
+
+## Contribuindo
+
+Nós adoramos contribuições! Se você encontrou um bug, tem uma ideia de funcionalidade ou quer codar algo, sua ajuda é muito bem-vinda.
+
+Por favor, leia o nosso [Guia de Contribuição](CONTRIBUTING.pt-BR.md) para saber como participar. Pessoas de todos os níveis de experiência são bem-vindas!
+
