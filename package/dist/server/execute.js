@@ -1,23 +1,25 @@
 import WebSocket from "ws";
 import { randomUUID } from "crypto";
 import { deserialize, serialize } from "./session.js";
-
 function joinPromptSections(sections) {
     return sections.filter((s) => typeof s === "string" && s.trim().length > 0).join("\n\n");
 }
 function renderPaperclipWakePrompt(wake, options) {
-    if (!wake || typeof wake !== "object") return "";
+    if (!wake || typeof wake !== "object")
+        return "";
     const parts = [];
     if (options?.resumedSession) {
         parts.push("Paperclip Resume Delta:");
-    } else {
+    }
+    else {
         parts.push("Paperclip Wake Payload:");
     }
-    if (wake.wakeReason) parts.push(`- Reason: ${wake.wakeReason}`);
-    if (wake.wakeCommentId) parts.push(`- Comment: ${wake.wakeCommentId}`);
+    if (wake.wakeReason)
+        parts.push(`- Reason: ${wake.wakeReason}`);
+    if (wake.wakeCommentId)
+        parts.push(`- Comment: ${wake.wakeCommentId}`);
     return parts.length > 1 ? parts.join("\n") : "";
 }
-
 function buildRichPrompt(ctx) {
     const isResume = Boolean(deserialize(ctx.runtime.sessionParams));
     const wakePrompt = renderPaperclipWakePrompt(ctx.context.paperclipWake, { resumedSession: isResume });
@@ -77,61 +79,61 @@ const PICOCLAW_PONG = "pong";
 function truncateForLog(value, maxLength = 160) {
     const text = String(value ?? "");
     const redacted = text.replace(/(Bearer\s+)[a-zA-Z0-9_\-\.\~]+/gi, "$1***REDACTED***")
-                         .replace(/(["']?(?:api_key|token|secret|password|auth)["']?\s*[:=]\s*["']?)[a-zA-Z0-9_\-\.\~]+/gi, "$1***REDACTED***");
+        .replace(/(["']?(?:api_key|token|secret|password|auth)["']?\s*[:=]\s*["']?)[a-zA-Z0-9_\-\.\~]+/gi, "$1***REDACTED***");
     return redacted.length > maxLength ? `${redacted.slice(0, maxLength)}...` : redacted;
 }
 function toolCallDisplay(toolCall) {
-    if (!toolCall || typeof toolCall !== "object")
-        return "unknown tool";
-    const name = String(toolCall.name ?? toolCall.function?.name ?? "unknown");
-    const rawArgs = toolCall.arguments ?? toolCall.function?.arguments ?? toolCall.args ?? null;
-    if (rawArgs == null)
-        return name;
-    let argsText;
-    if (typeof rawArgs === "string") {
-        argsText = rawArgs;
-    }
-    else {
-        try {
-            argsText = JSON.stringify(rawArgs);
-        }
-        catch {
-            argsText = String(rawArgs);
-        }
-    }
-    return `${name}(${truncateForLog(argsText)})`;
-}
-function toolCallKey(toolCall) {
-    if (!toolCall || typeof toolCall !== "object")
-        return "unknown";
-    const name = String(toolCall.name ?? toolCall.function?.name ?? "unknown");
-    const rawArgs = toolCall.arguments ?? toolCall.function?.arguments ?? toolCall.args ?? "";
-    return `${name}:${typeof rawArgs === "string" ? rawArgs : JSON.stringify(rawArgs)}`;
+    const name = toolCall?.name ?? "unknown_tool";
+    const args = toolCall?.arguments ?? {};
+    const argsStr = Object.keys(args).length > 0 ? JSON.stringify(args) : "";
+    return argsStr ? `${name}(${truncateForLog(argsStr)})` : `${name}()`;
 }
 function extractToolCalls(payload) {
-    const calls = payload?.tool_calls ?? payload?.toolCalls ?? [];
-    return Array.isArray(calls) ? calls : [];
+    const calls = [];
+    if (!payload || typeof payload !== "object")
+        return calls;
+    if (Array.isArray(payload.tool_calls)) {
+        calls.push(...payload.tool_calls);
+    }
+    if (Array.isArray(payload.choices)) {
+        for (const choice of payload.choices) {
+            if (Array.isArray(choice?.message?.tool_calls)) {
+                calls.push(...choice.message.tool_calls);
+            }
+        }
+    }
+    return calls;
+}
+function toolCallKey(toolCall) {
+    return `${toolCall?.name ?? "unknown"}:${JSON.stringify(toolCall?.arguments ?? {})}`;
 }
 function buildToolCallDiary(toolCall, attempt) {
-    const action = toolCallDisplay(toolCall);
-    return `[PicoClaw] Tentativa ${attempt}: executando ferramenta ${action}.`;
+    const callStr = toolCallDisplay(toolCall);
+    if (attempt > 1) {
+        return `[tool] retrying ${callStr} (attempt ${attempt})...`;
+    }
+    return `[tool] calling ${callStr}...`;
 }
-function buildSessionWebSocketUrl(gatewayUrl, sessionId) {
-    const wsUrl = gatewayUrl.startsWith("ws") ? gatewayUrl : `ws://${gatewayUrl}`;
-    const parsed = new URL(wsUrl);
-    parsed.searchParams.set("session_id", sessionId);
-    return parsed.toString();
-}
-async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStderr) {
-    const wsUrl = buildSessionWebSocketUrl(config.gatewayUrl, sessionId);
-    const ws = new WebSocket(wsUrl, [`token.${config.token}`]);
-    let accumulated = "";
+export async function picoclawExecute(ctx) {
+    const config = resolveConfig(ctx);
+    const prompt = config.promptMode === "full" ? ctx.renderedPrompt : buildRichPrompt(ctx);
+    const sessionId = resolveSession(ctx, config);
+    const onLogStdout = async (chunk) => {
+        await ctx.onLog("stdout", chunk);
+    };
+    const onLogStderr = async (chunk) => {
+        await ctx.onLog("stderr", chunk);
+    };
+    await ctx.onRuntimeParams({
+        sessionId,
+        gatewayUrl: config.gatewayUrl,
+    });
     let done = false;
-    let errorMsg = "";
+    let accumulated = "";
+    let errorMsg = null;
     let toolAttempts = {};
     let messageBuffers = {};
     let lastAgentNarrationAt = 0;
-    
     let completionGraceTimer = null;
     const cancelCompletionGrace = () => {
         if (completionGraceTimer) {
@@ -139,7 +141,6 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
             completionGraceTimer = null;
         }
     };
-
     await new Promise((resolve, reject) => {
         const finalizeRun = () => {
             if (!done) {
@@ -148,7 +149,6 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
                 resolve();
             }
         };
-
         const flushMessageBuffer = async (messageId) => {
             const buffer = messageBuffers[messageId];
             if (!buffer || !buffer.content.trim())
@@ -156,7 +156,7 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
             delete messageBuffers[messageId];
             accumulated = buffer.mode === "replace" ? buffer.content : accumulated + buffer.content;
             lastAgentNarrationAt = Date.now();
-            await onLogStdout(JSON.stringify({ type: "picoclaw.message", content: buffer.content }) + "\n");
+            await onLogStdout(buffer.content + "\n");
         };
         const scheduleMessageBuffer = (messageId, content, mode) => {
             if (!messageBuffers[messageId])
@@ -210,7 +210,7 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
                                     const key = toolCallKey(call);
                                     toolAttempts[key] = (toolAttempts[key] || 0) + 1;
                                     const diaryMsg = buildToolCallDiary(call, toolAttempts[key]);
-                                    await onLogStdout(JSON.stringify({ type: "picoclaw.message", content: diaryMsg }) + "\n");
+                                    await onLogStdout(`> ${diaryMsg}\n`);
                                 }
                             }
                         }
@@ -229,11 +229,10 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
                         break;
                     }
                     case "typing.start": {
-                        await onLogStdout(JSON.stringify({ type: "picoclaw.typing", state: "start" }) + "\n");
+                        await onLogStdout("[PicoClaw is thinking...]\n");
                         break;
                     }
                     case "typing.stop": {
-                        await onLogStdout(JSON.stringify({ type: "picoclaw.typing", state: "stop" }) + "\n");
                         if (!completionGraceTimer) {
                             completionGraceTimer = setTimeout(() => {
                                 finalizeRun();
@@ -262,28 +261,25 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
                         break;
                 }
             }
-            catch {
-                await onLogStderr(`picoclaw: could not parse message frame`);
+            catch (err) {
+                if (!done) {
+                    done = true;
+                    errorMsg = err.message;
+                    await onLogStderr(`picoclaw: WebSocket error: ${err.message}`);
+                    ws.close(1000);
+                    reject(new Error(err.message));
+                }
             }
         });
-        ws.on("error", async (err) => {
-            errorMsg = err.message;
-            await onLogStderr(`picoclaw: WebSocket error: ${err.message}`);
+        ws.on("close", async () => {
             if (!done) {
-                done = true;
-                reject(new Error(err.message));
-            }
-        });
-        ws.on("close", () => {
-            if (!done) {
-                done = true;
                 for (const msgId of Object.keys(messageBuffers)) {
                     clearTimeout(messageBuffers[msgId].timer);
                     if (messageBuffers[msgId].content.trim()) {
                         accumulated = messageBuffers[msgId].mode === "replace"
                             ? messageBuffers[msgId].content
                             : accumulated + messageBuffers[msgId].content;
-                        onLogStdout(JSON.stringify({ type: "picoclaw.message", content: messageBuffers[msgId].content }) + "\n").catch(() => {});
+                        onLogStdout(messageBuffers[msgId].content + "\n").catch(() => { });
                     }
                 }
                 if (errorMsg) {
@@ -293,61 +289,24 @@ async function picoclawExecute(config, prompt, sessionId, onLogStdout, onLogStde
                     resolve();
                 }
             }
+            clearTimeout(idleTimer);
+            cancelCompletionGrace();
+        });
+        ws.on("error", async (err) => {
+            if (!done) {
+                done = true;
+                errorMsg = err.message;
+                await onLogStderr(`picoclaw socket error: ${err.message}\n`);
+                ws.close(1000);
+                reject(err);
+            }
         });
     });
-    return accumulated;
-}
-export async function execute(ctx) {
-    const config = resolveConfig(ctx);
-    const sessionId = resolveSession(ctx, config);
-    if (!config.token) {
-        return {
-            exitCode: null,
-            signal: null,
-            timedOut: false,
-            errorMessage: "picoclaw: token is required",
-            errorFamily: "auth",
-        };
-    }
-    const prompt = config.promptMode === "compact"
-        ? buildRichPrompt(ctx)
-        : (ctx.renderedPrompt ?? "");
-    await ctx.onLog("stderr", `[DEBUG] Paperclip final prompt length: ${prompt.length} chars.\n`);
-    if (ctx.renderedPrompt) {
-        await ctx.onLog("stderr", `[DEBUG] renderedPrompt preview: ${String(ctx.renderedPrompt).slice(0, 200).replace(/\n/g, ' ')}...\n`);
-    }
-    let timedOut = false;
-    let accumulated = "";
-    try {
-        accumulated = await Promise.race([
-            picoclawExecute(config, prompt, sessionId, async (chunk) => {
-                await ctx.onLog("stdout", chunk);
-            }, async (chunk) => {
-                await ctx.onLog("stderr", chunk);
-            }),
-            new Promise((resolve) => setTimeout(() => {
-                timedOut = true;
-                resolve(accumulated);
-            }, config.timeoutMs)),
-        ]);
-    }
-    catch (err) {
-        return {
-            exitCode: 1,
-            signal: null,
-            timedOut: false,
-            errorMessage: String(err.message),
-            errorFamily: "transient_upstream",
-            errorCode: "picoclaw_execution_failed",
-        };
-    }
     return {
-        exitCode: timedOut ? 1 : 0,
-        signal: null,
-        timedOut,
-        summary: accumulated.slice(0, 500),
-        sessionParams: serialize({ sessionId }),
-        sessionDisplayId: sessionId.slice(0, 36),
-        billingType: "subscription",
+        completed: true,
+        summary: accumulated.trim() || "PicoClaw completed the execution without returning a message.",
+        data: {
+            mode: config.promptMode,
+        },
     };
 }
