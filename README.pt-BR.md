@@ -10,7 +10,7 @@ Este adaptador age como uma ponte: o Paperclip lida com a orquestração (painel
 
 1. **Paperclip** rodando (v2026.414+ com suporte a plugins NPM).
 2. **PicoClaw Gateway** rodando e acessível na rede.
-3. **Node.js** instalado na máquina do PicoClaw (altamente recomendado para suporte nativo às ferramentas MCP do Paperclip).
+3. **Node.js + npm/npx** instalados na máquina do PicoClaw (obrigatório para a configuração recomendada via MCP do Paperclip).
 
 ## Como Funciona
 
@@ -21,6 +21,12 @@ Quando um heartbeat (pulso) do Paperclip é acionado, este adaptador envia o pro
 ### 1. Configuração do Gateway PicoClaw (Crucial)
 
 Para a melhor experiência, você deve instalar o servidor MCP do Paperclip no ambiente do PicoClaw para que o LLM interaja de forma nativa com a API do Paperclip.
+
+O ambiente do PicoClaw precisa conseguir executar `npx`. No Alpine Linux, instale os pacotes mínimos necessários com:
+
+```bash
+apk add --no-cache nodejs npm
+```
 
 Nas configurações do seu PicoClaw (no JSON de MCPs/Tools), registre o Servidor MCP oficial:
 
@@ -65,7 +71,7 @@ Adicione o plugin à sua configuração `paperclip.json`:
 
 Dentro da Interface Web do Paperclip, crie ou edite um Agente e selecione o adaptador `picoclaw`. Você precisará fornecer:
 
-- **PicoClaw Gateway URL:** O endpoint WebSocket (ex: `ws://10.0.0.5:18790/pico`).
+- **PicoClaw Gateway URL:** O endpoint WebSocket do seu servidor PicoClaw. Lembre-se que o caminho nativo da API Pico sempre termina com `/ws` (ex: `ws://10.0.0.5:18790/pico/ws`).
 - **Authentication Token:** O token que corresponde à configuração `channels.pico.token` do PicoClaw.
 - **Run Timeout & Grace Period:** Garanta que o timeout seja longo o suficiente para o PicoClaw realizar operações complexas.
 
@@ -82,3 +88,5 @@ Dentro da Interface Web do Paperclip, crie ou edite um Agente e selecione o adap
   Sua `PAPERCLIP_API_URL` está apontando para o roteador frontend da interface em vez da API backend bruta. Certifique-se de que aponta para a porta `3100` sem barras no final.
 - **Erro: `Input token count exceeds...`**  
   O LLM entrou em loop ou leu arquivos muito grandes. Limpe a memória/workspace do PicoClaw ou troque para um modelo com maior janela de contexto no servidor do PicoClaw.
+- **Erro: `npx: not found` ou servidor MCP não inicia**  
+  Instale Node.js e npm/npx no ambiente do PicoClaw. No Alpine: `apk add --no-cache nodejs npm`.

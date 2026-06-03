@@ -5,9 +5,9 @@ export function getConfigSchema() {
                 key: "gatewayUrl",
                 label: "PicoClaw Gateway URL",
                 type: "text",
-                default: "ws://127.0.0.1:18790/pico",
+                default: "ws://127.0.0.1:18790/pico/ws",
                 required: true,
-                hint: "The WebSocket endpoint for the Pico Protocol (e.g. ws://localhost:18790/pico)",
+                hint: "The WebSocket endpoint for the Pico Protocol (e.g. ws://localhost:18790/pico/ws)",
             },
             {
                 key: "token",

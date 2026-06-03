@@ -87,7 +87,7 @@ function buildRichPrompt(ctx, config, skillPrompt, instructionsText) {
 function resolveConfig(ctx) {
     const cfg = ctx.config;
     return {
-        gatewayUrl: String(cfg.gatewayUrl ?? "ws://127.0.0.1:18790/pico"),
+        gatewayUrl: String(cfg.gatewayUrl ?? "ws://127.0.0.1:18790/pico/ws"),
         token: String(cfg.token ?? ""),
         timeoutMs: Number(cfg.timeoutSec ? cfg.timeoutSec * 1000 : cfg.timeoutMs ?? 300_000),
         completionGraceMs: Number(cfg.graceSec ? cfg.graceSec * 1000 : cfg.completionGraceMs ?? 5000),
