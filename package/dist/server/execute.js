@@ -1,6 +1,7 @@
 import WebSocket from "ws";
 import { randomUUID } from "crypto";
 import { deserialize, serialize } from "./session.js";
+import { readSelectedSkillPrompt } from "./skills.js";
 function joinPromptSections(sections) {
     return sections.filter((s) => typeof s === "string" && s.trim().length > 0).join("\n\n");
 }
@@ -20,7 +21,7 @@ function renderPaperclipWakePrompt(wake, options) {
         parts.push(`- Comment: ${wake.wakeCommentId}`);
     return parts.length > 1 ? parts.join("\n") : "";
 }
-function buildRichPrompt(ctx) {
+function buildRichPrompt(ctx, skillPrompt) {
     const isResume = Boolean(deserialize(ctx.runtime.sessionParams));
     const wakePrompt = renderPaperclipWakePrompt(ctx.context.paperclipWake, { resumedSession: isResume });
     const taskContextNote = String(ctx.context.paperclipTaskMarkdown ?? "").trim();
@@ -42,6 +43,7 @@ function buildRichPrompt(ctx) {
         wakePrompt,
         sessionHandoffNote,
         taskContextNote,
+        skillPrompt,
         userInstruction,
         constraints
     ]);
@@ -116,7 +118,10 @@ function buildToolCallDiary(toolCall, attempt) {
 }
 export async function execute(ctx) {
     const config = resolveConfig(ctx);
-    const prompt = config.promptMode === "full" ? ctx.renderedPrompt : buildRichPrompt(ctx);
+    const skillPrompt = await readSelectedSkillPrompt(ctx.config);
+    const prompt = config.promptMode === "full"
+        ? joinPromptSections([skillPrompt, ctx.renderedPrompt])
+        : buildRichPrompt(ctx, skillPrompt);
     const sessionId = resolveSession(ctx, config);
     const onLogStdout = async (chunk) => {
         await ctx.onLog("stdout", chunk);

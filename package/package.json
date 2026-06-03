@@ -1,6 +1,6 @@
 {
   "name": "paperclip-adapter-picoclaw",
-  "version": "0.1.37",
+  "version": "0.2.0",
   "description": "Paperclip external adapter for PicoClaw Pico Protocol over WebSocket",
   "type": "module",
   "main": "./dist/index.js",
