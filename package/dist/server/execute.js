@@ -153,8 +153,15 @@ export async function execute(ctx) {
         }
     };
     await new Promise(async (resolve, reject) => {
-        await onLogStdout(`[picoclaw] connecting to ${config.gatewayUrl}\n`);
-        const ws = new WebSocket(config.gatewayUrl, {
+        let wsUrl = config.gatewayUrl;
+        try {
+            const parsed = new URL(wsUrl.startsWith("ws") ? wsUrl : `ws://${wsUrl}`);
+            parsed.searchParams.set("session_id", sessionId);
+            wsUrl = parsed.toString();
+        } catch {
+        }
+        await onLogStdout(`[picoclaw] connecting to ${wsUrl.replace(/([?&]session_id=)[^&]+/, "$1[REDACTED]")}\n`);
+        const ws = new WebSocket(wsUrl, [`token.${config.token}`], {
             handshakeTimeout: Math.min(config.timeoutMs, 30_000),
             headers: {
                 Authorization: `Bearer ${config.token}`,
@@ -201,15 +208,23 @@ export async function execute(ctx) {
             }, config.timeoutMs);
         };
         resetIdleTimer(); // <-- Armar o timer no instante zero para prevenir hang de handshake
+        let pingInterval;
         ws.on("open", async () => {
             await onLogStdout("[picoclaw] connected, sending prompt\n");
-            ws.send(JSON.stringify({
+            const payload = {
                 type: "message.send",
                 id: randomUUID(),
                 session_id: sessionId,
                 payload: { content: prompt },
-            }));
+            };
+            await onLogStdout(`[picoclaw] debug: sent frame: ${JSON.stringify({ ...payload, payload: { content: "[TRUNCATED PROMPT]" } })}\n`);
+            ws.send(JSON.stringify(payload));
             resetIdleTimer();
+            pingInterval = setInterval(() => {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: "ping" }));
+                }
+            }, 30000);
         });
         ws.on("message", async (data) => {
             try {
