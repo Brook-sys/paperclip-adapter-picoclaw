@@ -1,8 +1,8 @@
-export function parseStdoutLine(line, ts) {
+exports.parseStdoutLine = function parseStdoutLine(line, ts) {
     const timestamp = ts || new Date().toISOString();
     const trimmed = line.trim();
-    if (!trimmed)
-        return [];
+    if (!trimmed) return [];
+
     try {
         const parsed = JSON.parse(trimmed);
         if (parsed && typeof parsed === "object" && parsed.type) {
@@ -31,8 +31,7 @@ export function parseStdoutLine(line, ts) {
             }
         }
         return [{ kind: "stdout", text: trimmed, ts: timestamp }];
-    }
-    catch {
+    } catch {
         return [{ kind: "stdout", text: trimmed, ts: timestamp }];
     }
-}
+};
